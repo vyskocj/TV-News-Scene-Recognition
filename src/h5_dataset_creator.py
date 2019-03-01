@@ -186,4 +186,4 @@ if __name__ == "__main__":
         else:
             blc.append(False)
 
-    create_dataset(tren, tst, "..\\data\\dataset.h5", img_shape=(180, 320, 3), cluster_names=names, balance=blc)
+    create_dataset(tren, tst, "..\\data\\dataset.h5", img_shape=(180, 320, 3), cluster_names=names)

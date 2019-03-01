@@ -9,9 +9,9 @@ os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 # Constants
 KERNEL_SIZE = (3, 3)
 POOLING_SIZE = (2, 2)
-BATCH_SIZE = 20
-EPOCHS = 30
-MODEL = "2build_n3_" + str(EPOCHS) + "e"
+BATCH_SIZE = 100
+EPOCHS = 20
+MODEL = "build3" + str(EPOCHS) + "e"
 DIR = "model_out"
 
 
@@ -39,31 +39,27 @@ def get_shape(dataset):
 
 def create_model(shape):
     model = Sequential()
-    model.add(Conv2D(32, kernel_size=KERNEL_SIZE,
-                     activation='relu',
-                     input_shape=shape, strides=3))
-    model.add(Conv2D(32, kernel_size=KERNEL_SIZE,
-                     activation='relu'))
-    model.add(BatchNormalization())  # za kažou konv
-    model.add(MaxPooling2D(pool_size=POOLING_SIZE,
-                           strides=2))
-    model.add(Dropout(0.20))
+    model.add(Conv2D(48, kernel_size=(5, 5), strides=1, activation='relu', input_shape=shape))
+    model.add(Conv2D(64, kernel_size=KERNEL_SIZE, activation='relu'))
+    model.add(MaxPooling2D(pool_size=POOLING_SIZE))
 
-    model.add(Conv2D(64, kernel_size=KERNEL_SIZE,
-                     activation='relu'))
-    model.add(MaxPooling2D(pool_size=POOLING_SIZE,
-                           strides=2))
+    model.add(Conv2D(64, kernel_size=KERNEL_SIZE, activation='relu'))
+    model.add(MaxPooling2D(pool_size=POOLING_SIZE))
+    model.add(Dropout(0.10))
 
-    model.add(Conv2D(64, kernel_size=KERNEL_SIZE,
-                     activation='relu'))
-    model.add(BatchNormalization())  # za kažou konv
-    model.add(MaxPooling2D(pool_size=POOLING_SIZE,
-                           strides=2))
-    model.add(Dropout(0.20))
+    model.add(Conv2D(128, kernel_size=KERNEL_SIZE, activation='relu'))
+    model.add(MaxPooling2D(pool_size=POOLING_SIZE))
+
+    model.add(Conv2D(192, kernel_size=KERNEL_SIZE, activation='relu'))
+    model.add(MaxPooling2D(pool_size=POOLING_SIZE))
+    model.add(Dropout(0.10))
+
+    model.add(Conv2D(224, kernel_size=KERNEL_SIZE, activation='relu'))
+    model.add(MaxPooling2D(pool_size=POOLING_SIZE))
 
     model.add(Flatten())
     model.add(Dense(512, activation='relu'))
-    model.add(Dropout(0.50))
+    model.add(Dropout(0.30))
     model.add(Dense(9, activation='softmax'))
     return model
 
@@ -77,14 +73,14 @@ def build(dataset_path):
     with h5py.File(dataset_path, 'r') as dataset:
         x_train, y_train, x_test, y_test, shape = read_dataset(dataset)
         model = create_model(shape)
-        # model = keras.models.load_model('build_n1.h5')
+        # model = keras.models.load_model('..\\data\\model_out\\best_model.h5')
         model.summary()
 
         model.compile(loss=keras.losses.categorical_crossentropy,
-                      optimizer=keras.optimizers.Adam(),
+                      optimizer=keras.optimizers.adadelta(),
                       # sgd -> velmi náchylné na nastavení param : zkusím .01 -> pokud nic, tak .001 ..., momentum .9, zkusit nesterov=True
                       metrics=['accuracy'])  # rmsprop -> tu taky learning rate
-        print(len(y_train[0]), len(y_test[0]))
+
         history = model.fit(x_train, y_train,
                             batch_size=BATCH_SIZE,
                             epochs=EPOCHS,
@@ -130,4 +126,4 @@ def build(dataset_path):
             f.write("\n")
             f.write(str(history.history['val_loss']))
 
-build("..\\data\\dataset_balanced.h5")
+build("..\\data\\dataset.h5")
