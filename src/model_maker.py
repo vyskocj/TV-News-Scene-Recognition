@@ -10,8 +10,9 @@ os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 KERNEL_SIZE = (3, 3)
 POOLING_SIZE = (2, 2)
 BATCH_SIZE = 100
-EPOCHS = 20
-MODEL = "build3" + str(EPOCHS) + "e"
+EPOCHS = 200
+TYPE = "02"
+MODEL = "build_" + TYPE
 DIR = "model_out"
 
 
@@ -39,28 +40,31 @@ def get_shape(dataset):
 
 def create_model(shape):
     model = Sequential()
-    model.add(Conv2D(48, kernel_size=(5, 5), strides=1, activation='relu', input_shape=shape))
-    model.add(Conv2D(64, kernel_size=KERNEL_SIZE, activation='relu'))
+    model.add(Conv2D(24, kernel_size=KERNEL_SIZE, strides=1, activation='relu', input_shape=shape))
+    model.add(MaxPooling2D(pool_size=(3, 3)))
+    model.add(Dropout(0.20))
+
+    model.add(Conv2D(60, kernel_size=KERNEL_SIZE, activation='relu'))
+    model.add(BatchNormalization(axis=-1))
     model.add(MaxPooling2D(pool_size=POOLING_SIZE))
 
-    model.add(Conv2D(64, kernel_size=KERNEL_SIZE, activation='relu'))
+    model.add(Conv2D(150, kernel_size=KERNEL_SIZE, activation='relu'))
     model.add(MaxPooling2D(pool_size=POOLING_SIZE))
-    model.add(Dropout(0.10))
+    model.add(Dropout(0.20))
 
-    model.add(Conv2D(128, kernel_size=KERNEL_SIZE, activation='relu'))
+    model.add(Conv2D(375, kernel_size=KERNEL_SIZE, activation='relu'))
+    model.add(BatchNormalization(axis=-1))
     model.add(MaxPooling2D(pool_size=POOLING_SIZE))
 
-    model.add(Conv2D(192, kernel_size=KERNEL_SIZE, activation='relu'))
+    model.add(Conv2D(500, kernel_size=KERNEL_SIZE, activation='relu'))
     model.add(MaxPooling2D(pool_size=POOLING_SIZE))
-    model.add(Dropout(0.10))
-
-    model.add(Conv2D(224, kernel_size=KERNEL_SIZE, activation='relu'))
-    model.add(MaxPooling2D(pool_size=POOLING_SIZE))
+    model.add(Dropout(0.20))
 
     model.add(Flatten())
-    model.add(Dense(512, activation='relu'))
-    model.add(Dropout(0.30))
+    model.add(Dense(750, activation='relu'))
+    model.add(Dropout(0.50))
     model.add(Dense(9, activation='softmax'))
+
     return model
 
 
@@ -77,9 +81,18 @@ def build(dataset_path):
         model.summary()
 
         model.compile(loss=keras.losses.categorical_crossentropy,
-                      optimizer=keras.optimizers.adadelta(),
+                      optimizer=keras.optimizers.sgd(lr=.001, momentum=.9, nesterov=True),
                       # sgd -> velmi náchylné na nastavení param : zkusím .01 -> pokud nic, tak .001 ..., momentum .9, zkusit nesterov=True
                       metrics=['accuracy'])  # rmsprop -> tu taky learning rate
+
+        if len(y_train) > 10000:
+            EPOCHS = 50
+        elif len(y_train) > 5000:
+            EPOCHS = 80
+        elif len(y_train) > 1000:
+            EPOCHS = 300
+        else:
+            EPOCHS = 800
 
         history = model.fit(x_train, y_train,
                             batch_size=BATCH_SIZE,
@@ -116,6 +129,7 @@ def build(dataset_path):
         plt.xlabel('epoch')
         plt.legend(['train', 'test'], loc='upper left')
         plt.savefig("..\\data\\model_out\\" + "loss_" + MODEL + ".png")
+        plt.clf()
 
         with open("..\\data\\model_out\\" + "out_" + MODEL + ".txt", "w") as f:
             f.write(str(history.history['acc']))
@@ -125,5 +139,8 @@ def build(dataset_path):
             f.write(str(history.history['loss']))
             f.write("\n")
             f.write(str(history.history['val_loss']))
-
-build("..\\data\\dataset.h5")
+# chybí 56
+for i in ["56"]:
+    TYPE = i
+    MODEL = "build_" + TYPE
+    build("..\\data\\dataset_" + TYPE + ".h5")

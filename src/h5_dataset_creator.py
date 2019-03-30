@@ -112,8 +112,13 @@ def list_of_imgs(source_imgs, extension="jpg"):
 def list_of_all_imgs(data, balance=None):
     data_paths = list()  # list for all images
     data_clusters = list()  # list of all classifications
+    not_dlt = [5, 6]
     for index, path in enumerate(data):
         img_paths, size = list_of_imgs(path)  # get list of paths and count them
+
+        if index not in not_dlt:
+            img_paths = []
+            size = 0
 
         # balance training images
         if balance != None and balance[index] == True:
@@ -185,5 +190,8 @@ if __name__ == "__main__":
             blc.append(True)
         else:
             blc.append(False)
-
-    create_dataset(tren, tst, "..\\data\\dataset.h5", img_shape=(180, 320, 3), cluster_names=names)
+    """" done...
+    "01", "02", "03", "04", "05", "06", "07", "08", "12", "13", "14", "15", "16", "17", "18", "23", "24", "25", "26", "27", "28", "34", "35", "36", "37", "38", "45", "46", "47", "48", "56", "57", "58", "67", "68", "78"
+    """
+    i = "56"
+    create_dataset(tren, tst, "..\\data\\dataset_" + i + ".h5", img_shape=(180, 320, 3), cluster_names=names)
