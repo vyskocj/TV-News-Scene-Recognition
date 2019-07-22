@@ -3,6 +3,7 @@ import keras
 from keras.models import Sequential
 from keras.applications.resnet50 import ResNet50
 from keras.applications.vgg16 import VGG16
+from keras.layers import LSTM
 from keras.layers import Dense, Dropout, Flatten
 from keras.layers import Conv2D, MaxPooling2D, BatchNormalization
 
@@ -72,139 +73,102 @@ def create_model(shape):
 
 
 def build(dataset_path):
-    # první čílo _ zástupce (vybrat zátupce náhodně)
-    # os.thisdir -> pro každý dir ho splitnu
-    # sh.to copy
-    # zjistit vyváženot tříd -> vyvážit jen ty, kde jich je hodně
     # load the dataset by path and get shape of images
-    for i in range(9, 10):
-        with h5py.File(dataset_path, 'r') as dataset:
-            x_train, y_train, x_test, y_test, shape = read_dataset(dataset)
-            # model = create_model(shape)
-            # model = keras.models.load_model('..\\data\\model_out\\build_vgg16.h5')
-            # model.summary()
+    with h5py.File(dataset_path, 'r') as dataset:
+        x_train, y_train, x_test, y_test, shape = read_dataset(dataset)
+        #model = keras.models.load_model('..\\data\\model_out\\build_21_vgg16.h5')
+        #model.summary()
 
-            if i in [5, 6, 7, 8]:
-                model_app = ResNet50(weights='imagenet', include_top=False, input_shape=shape)
-                #BATCH_SIZE = 10
-                TYPE = "resnet50"
-            else:
-                model_app = VGG16(weights='imagenet', include_top=False, input_shape=shape)
-                BATCH_SIZE = 48
-                #TYPE = "vgg16"
-            #MODEL = "build_" + str(i) + "_" + TYPE
+        #
+        # načtení natrénovaného modelu a odstranění poslední vrstvy
+        #
+        model2 = Sequential()
+        model2.add(VGG16(weights='imagenet', include_top=False, input_shape=shape))
+        model2.add(Flatten())
+        model2.add(Dense(1400, activation='relu'))
+        model2.add(Dropout(0.50))
+        model2.add(Dense(9, activation='softmax'))
 
-            #for layer in model_app.layers[:-5]:
-            #    layer.trainable = False
+        model2.load_weights('..\\data\\my_model_weights.h5')
+        model2.pop()
 
-            model = Sequential()
-            model.add(model_app)
-            model.add(Flatten())
+        model2.summary()
 
-            if i == 1 or i == 5:
-                model.add(Dense(800, activation='relu'))
-                model.add(Dropout(0.50))
-                model.add(Dense(9, activation='softmax'))
-            elif i == 2 or i == 6:
-                model.add(Dense(1400, activation='relu'))
-                model.add(Dropout(0.50))
-                model.add(Dense(9, activation='softmax'))
-            elif i == 3 or i == 7:
-                model.add(Dense(800, activation='relu'))
-                model.add(Dropout(0.50))
-                model.add(Dense(1400, activation='relu'))
-                model.add(Dropout(0.50))
-                model.add(Dense(9, activation='softmax'))
-            elif i == 4 or i == 8:
-                model.add(Dense(1400, activation='relu'))
-                model.add(Dropout(0.50))
-                model.add(Dense(800, activation='relu'))
-                model.add(Dropout(0.50))
-                model.add(Dense(9, activation='softmax'))
-            elif i == 9:
-                model.add(Dense(2000, activation='relu'))
-                model.add(Dropout(0.50))
-                model.add(Dense(2000, activation='relu'))
-                model.add(Dropout(0.50))
-                model.add(Dense(1500, activation='relu'))
-                model.add(Dense(9, activation='softmax'))
-            elif i == 21:
-                model = keras.models.load_model('..\\data\\model_out\\build_2_vgg16.h5')
-            elif i == 22:
-                model.add(Dense(1500, activation='relu'))
-                model.add(Dropout(0.50))
-                model.add(Dense(1500, activation='relu'))
-                model.add(Dense(9, activation='softmax'))
+        #model2.save("..\\models\\part1.h5")
 
-            model = create_model(shape)
-            model.summary()
+        #
+        # model LSTM pro trénování
+        #
+        #model2.add(LSTM(9, return_sequences=True, activation='softmax'))
+        #model2.summary()
 
+        return
 
-            if len(y_train) > 10000:
-                EPOCHS = 200
-            elif len(y_train) > 5000:
-                EPOCHS = 80
-            elif len(y_train) > 1000:
-                EPOCHS = 300
-            else:
-                EPOCHS = 800
+        if len(y_train) > 10000:
+            EPOCHS = 200
+        elif len(y_train) > 5000:
+            EPOCHS = 80
+        elif len(y_train) > 1000:
+            EPOCHS = 300
+        else:
+            EPOCHS = 800
 
-            if i in [21]:
-                model.compile(loss=keras.losses.categorical_crossentropy,
-                              optimizer=keras.optimizers.SGD(nesterov=True),
-                              # sgd -> velmi náchylné na nastavení param : zkusím .01 -> pokud nic, tak .001 ..., momentum .9, zkusit nesterov=True
-                              metrics=['accuracy'])  # rmsprop -> tu taky learning rate
-            else:
-                model.compile(loss=keras.losses.categorical_crossentropy,
-                              optimizer=keras.optimizers.SGD(lr=.001, momentum=.9, nesterov=True),
-                              # sgd -> velmi náchylné na nastavení param : zkusím .01 -> pokud nic, tak .001 ..., momentum .9, zkusit nesterov=True
-                              metrics=['accuracy'])  # rmsprop -> tu taky learning rate
+        if i in [21]:
+            model.compile(loss=keras.losses.categorical_crossentropy,
+                          optimizer=keras.optimizers.SGD(nesterov=True),
+                          # sgd -> velmi náchylné na nastavení param : zkusím .01 -> pokud nic, tak .001 ..., momentum .9, zkusit nesterov=True
+                          metrics=['accuracy'])  # rmsprop -> tu taky learning rate
+        else:
+            model.compile(loss=keras.losses.categorical_crossentropy,
+                          optimizer=keras.optimizers.SGD(lr=.001, momentum=.9, nesterov=True),
+                          # sgd -> velmi náchylné na nastavení param : zkusím .01 -> pokud nic, tak .001 ..., momentum .9, zkusit nesterov=True
+                          metrics=['accuracy'])  # rmsprop -> tu taky learning rate
 
-            history = model.fit(x_train, y_train,
-                                batch_size=BATCH_SIZE,
-                                epochs=EPOCHS,
-                                verbose=1,
-                                validation_data=(x_test, y_test),
-                                shuffle="batch")
+        history = model.fit(x_train, y_train,
+                            batch_size=BATCH_SIZE,
+                            epochs=EPOCHS,
+                            verbose=1,
+                            validation_data=(x_test, y_test),
+                            shuffle="batch")
 
-            score = model.evaluate(x_test, y_test, verbose=0)
-            print('Test loss:', score[0])
-            print('Test accuracy:', score[1])
+        score = model.evaluate(x_test, y_test, verbose=0)
+        print('Test loss:', score[0])
+        print('Test accuracy:', score[1])
 
-            model.save("..\\data\\model_out\\" + MODEL + '.h5')
-            print("acc")
-            print(history.history["acc"])
-            print("val_acc")
-            print(history.history["val_acc"])
+        model.save("..\\data\\model_out\\" + MODEL + '.h5')
+        print("acc")
+        print(history.history["acc"])
+        print("val_acc")
+        print(history.history["val_acc"])
 
-            import matplotlib.pyplot as plt
-            # summarize history for accuracy
-            plt.plot(history.history['acc'])
-            plt.plot(history.history['val_acc'])
-            plt.title('model accuracy')
-            plt.ylabel('accuracy')
-            plt.xlabel('epoch')
-            plt.legend(['train', 'test'], loc='upper left')
-            plt.savefig("..\\data\\model_out\\" + "acc_" + MODEL + ".png")
-            plt.clf()
-            # summarize history for loss
-            plt.plot(history.history['loss'])
-            plt.plot(history.history['val_loss'])
-            plt.title('model loss')
-            plt.ylabel('loss')
-            plt.xlabel('epoch')
-            plt.legend(['train', 'test'], loc='upper left')
-            plt.savefig("..\\data\\model_out\\" + "loss_" + MODEL + ".png")
-            plt.clf()
+        import matplotlib.pyplot as plt
+        # summarize history for accuracy
+        plt.plot(history.history['acc'])
+        plt.plot(history.history['val_acc'])
+        plt.title('model accuracy')
+        plt.ylabel('accuracy')
+        plt.xlabel('epoch')
+        plt.legend(['train', 'test'], loc='upper left')
+        plt.savefig("..\\data\\model_out\\" + "acc_" + MODEL + ".png")
+        plt.clf()
+        # summarize history for loss
+        plt.plot(history.history['loss'])
+        plt.plot(history.history['val_loss'])
+        plt.title('model loss')
+        plt.ylabel('loss')
+        plt.xlabel('epoch')
+        plt.legend(['train', 'test'], loc='upper left')
+        plt.savefig("..\\data\\model_out\\" + "loss_" + MODEL + ".png")
+        plt.clf()
 
-            with open("..\\data\\model_out\\" + "out_" + MODEL + ".txt", "w") as f:
-                f.write(str(history.history['acc']))
-                f.write("\n")
-                f.write(str(history.history['val_acc']))
-                f.write("\n")
-                f.write(str(history.history['loss']))
-                f.write("\n")
-                f.write(str(history.history['val_loss']))
+        with open("..\\data\\model_out\\" + "out_" + MODEL + ".txt", "w") as f:
+            f.write(str(history.history['acc']))
+            f.write("\n")
+            f.write(str(history.history['val_acc']))
+            f.write("\n")
+            f.write(str(history.history['loss']))
+            f.write("\n")
+            f.write(str(history.history['val_loss']))
 
 
 build("..\\data\\dataset.h5")
