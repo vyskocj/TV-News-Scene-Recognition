@@ -13,7 +13,7 @@ os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 KERNEL_SIZE = (3, 3)
 POOLING_SIZE = (2, 2)
 BATCH_SIZE = 70
-EPOCHS = 200
+EPOCHS = 50
 TYPE = "lowparams"
 MODEL = "build_" + TYPE
 DIR = "model_out"
@@ -83,11 +83,14 @@ def build(dataset_path):
         # načtení natrénovaného modelu a odstranění poslední vrstvy
         #
         model2 = Sequential()
-        model2.add(TimeDistributed(VGG16(weights='imagenet', include_top=False), input_shape=(25,) + shape))
+        model2.add(TimeDistributed(VGG16(weights='imagenet', include_top=False), input_shape=(25,) + shape, trainable=False))
         model2.add(TimeDistributed(Flatten()))
-        model2.add(TimeDistributed(Dense(1400, activation='relu')))
+        model2.add(TimeDistributed(Dense(1400, activation='relu'), trainable=False))
         model2.add(TimeDistributed(Dropout(0.50)))
         model2.add(TimeDistributed(Dense(9, activation='softmax')))
+
+
+        print(model2.layers[0].get_config())
 
         model2.load_weights('..\\data\\my_model_weights.h5')
         model2.pop()
@@ -103,40 +106,9 @@ def build(dataset_path):
         model2.add(Dense(9, activation='softmax'))
         model2.summary()
 
-        input_directory = "..\\data\\dataset\\train\\graphics"
-        IMG_SHAPE = (180, 320)
-        img_list = list()
-        import cv2
-        import numpy as np
-        for img_name in os.listdir(input_directory):
-            img = cv2.imread(input_directory + '\\' + img_name)
-            img = cv2.resize(img, (IMG_SHAPE[1], IMG_SHAPE[0]), interpolation=cv2.INTER_CUBIC)
-            img = np.array(img)
-            img = img.astype("float32")
-            img = np.divide(img, 255.0)
+        model = model2
 
-            img_list.append(img)
-
-            if len(img_list) == 25:
-                break
-
-        img_list = np.array([img_list])
-        print(img_list.shape)
-        pred = model2.predict(img_list)
-
-        print(pred)
-        return
-
-        if len(y_train) > 10000:
-            EPOCHS = 200
-        elif len(y_train) > 5000:
-            EPOCHS = 80
-        elif len(y_train) > 1000:
-            EPOCHS = 300
-        else:
-            EPOCHS = 800
-
-        if i in [21]:
+        if False:
             model.compile(loss=keras.losses.categorical_crossentropy,
                           optimizer=keras.optimizers.SGD(nesterov=True),
                           # sgd -> velmi náchylné na nastavení param : zkusím .01 -> pokud nic, tak .001 ..., momentum .9, zkusit nesterov=True

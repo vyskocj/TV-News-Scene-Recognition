@@ -2,7 +2,8 @@ import h5py
 import os, glob
 import cv2
 import random
-import numpy as np
+
+from src.const_spec import *
 
 
 def create_dataset(train_data_paths, test_data_paths, output_filename, img_shape=None, shuffle=True,
@@ -177,21 +178,46 @@ def shuffle_2lists(list1, list2):
     list1[:], list2[:] = zip(*combined)
     return list1, list2
 
-if __name__ == "__main__":
-    names = os.listdir("..\\data\\dataset\\train")
 
-    tren = ["..\\data\\dataset\\train\\" + name for name in names]
-    tst = ["..\\data\\dataset\\test\\" + name for name in names]
+def shuffle_dataset(input_dataset, output_dataset, input_keys, output_keys=None):
 
-    blc = list()
-    for i in tren:
-        i = i.split("\\")[-1]
-        if i in ["graphics", "indoor", "indoor studio of Czech TV", "outdoor country", "outdoor human made"]:
-            blc.append(True)
-        else:
-            blc.append(False)
-    """" done...
-    "01", "02", "03", "04", "05", "06", "07", "08", "12", "13", "14", "15", "16", "17", "18", "23", "24", "25", "26", "27", "28", "34", "35", "36", "37", "38", "45", "46", "47", "48", "56", "57", "58", "67", "68", "78"
-    """
-    i = "56"
-    create_dataset(tren, tst, "..\\data\\dataset_" + i + ".h5", img_shape=(180, 320, 3), cluster_names=names)
+    if type(input_dataset) is str:
+        input_dataset = [input_dataset]
+    elif type(input_dataset) is not tuple or type(input_dataset) is not list:
+        return INVALID_DATA_TYPE
+
+    if type(input_keys[0]) is not tuple or type(input_keys[0]) is not list:
+        input_keys = [input_keys] * len(input_dataset)
+
+        if output_keys is None and len(input_dataset) != 1:
+            print('[E] Define parameter output_keys for function shuffle_dataset!')
+            return INVALID_INPUT_ARGUMENT
+
+    if output_keys is None:
+        output_keys = input_keys
+
+    with h5py.File(output_dataset, 'w') as new_dataset:
+        for input in input_dataset:
+            with h5py.File(input, 'r') as old_dataset:
+                for i in range(0, len(input_keys)):
+                    j_data = 0
+                    j_labels = 1
+
+                    if len(old_dataset[input_keys[i][j_data]].shape) == 1:
+                        j_data = 1
+                        j_labels = 0
+
+                    new_dataset.create_dataset(output_keys[i][j_data], shape=old_dataset[input_keys[i][j_data]].shape,
+                                               dtype="float32")
+
+                    shuffle_list = list(range(0, len(old_dataset[input_keys[i][j_data]])))
+                    random.shuffle(shuffle_list)
+
+                    labels = list()
+                    for k, s in enumerate(shuffle_list):
+                        for l in range(0, len(old_dataset[input_keys[i][j_data]][k])):
+                            new_dataset[output_keys[i][j_data]][k, l, ...] = old_dataset[input_keys[i][j_data]][s, l, ...] / 255.0
+
+                        labels.append(old_dataset[input_keys[i][j_labels]][s, ...])
+
+                    new_dataset.create_dataset(output_keys[i][j_labels], shape=labels.shape, data=labels, dtype="uint8")
