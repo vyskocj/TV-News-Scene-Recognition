@@ -113,14 +113,14 @@ def train_model(model, train_data, validation_data, epochs, batch_size, optimize
     :param batch_size: The number of samples that will be propagated through the network.
     :param optimizer: Keras optimizer instance.
     :param output_path: Optional, path where is generated training history and where is saved trained model.
-    :return: History of training.
+    :return: History of training and output path.
     """
     # set the output directory name
     if output_path is not None:
         if not os.path.exists(output_path):
             print('[E] Output path is invalid!\n'
                   '- You are currently: ' + os.path.abspath('.') + '\n'
-                  '- Your request was: ' + output_path)
+                  '- Your request was: ' + output_path + '\n')
             return INVALID_OUTPUT_PATH
 
         output_dir = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
@@ -134,7 +134,7 @@ def train_model(model, train_data, validation_data, epochs, batch_size, optimize
     # setting the compiler for training and fitting the model
     model.compile(loss=keras.losses.categorical_crossentropy, optimizer=optimizer, metrics=['accuracy'])
     history = model.fit(train_data[0], train_data[1], validation_data=validation_data,
-                        batch_size=batch_size, epochs=epochs, shuffle='batch')
+                        batch_size=batch_size, epochs=epochs, shuffle='batch', verbose=(0 if UNIT_TEST else 1))
 
     # ==================================================================================================================
     # Part of the output generation
@@ -196,8 +196,9 @@ def train_model(model, train_data, validation_data, epochs, batch_size, optimize
         # ==============================================================================================================
         model.save(output + 'model.h5')
 
-        print('\n\n')
-        print(f'The output was successfully saved: %s' % output)
+        if not UNIT_TEST:
+            print('\n\n')
+            print(f'The output was successfully saved: %s' % output)
     # endif output_path is not None // generate the output if required
 
-    return history
+    return history, output

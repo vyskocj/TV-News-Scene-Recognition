@@ -2,10 +2,12 @@ import cv2
 import math
 
 
+# TODO: přehodit na lepší místo - do mainu
 VIDEO_FILE = "../data/udalosti.ts"
-OUTPUT_DIR = '../data/dataset_test/image'
+OUTPUT_DIR = '../data/dataset_test_lstm/image'
 
 
+# TODO: dokomentovat, název uloženého obrázku dle času
 def video2img(file, output_directory, time_to_get_frame=0):
     # loading the video and getting frame rate
     cap = cv2.VideoCapture(file)
@@ -15,6 +17,7 @@ def video2img(file, output_directory, time_to_get_frame=0):
         framerate = 1
     else:
         framerate = cap.get(cv2.CAP_PROP_FPS) * time_to_get_frame
+    print('framerate: ' + str(framerate) + ' [Hz]')
 
     # saving pictures from video
     index = 1
@@ -36,4 +39,4 @@ def video2img(file, output_directory, time_to_get_frame=0):
 
 
 if __name__ == "__main__":
-    video2img(VIDEO_FILE, OUTPUT_DIR, 5)
+    video2img(VIDEO_FILE, OUTPUT_DIR, 0.2)
