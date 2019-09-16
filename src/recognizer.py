@@ -163,7 +163,7 @@ def train_model(model, train_data, validation_data, epochs, batch_size, optimize
             plt.xlabel('epoch')
             plt.legend(['train', 'test'], loc='upper left')
 
-            plt.savefig(output + cat + '.png')
+            plt.savefig(output + cat + '.svg')
             plt.clf()
 
             # ==========================================================================================================

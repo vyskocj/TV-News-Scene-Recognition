@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <!-- The navigation bar was inspired by: https://www.w3schools.com/howto/howto_js_sidenav.asp -->
+    <meta charset="UTF-8">
+    <title>Evaluation</title>
+    <style>
+        body {
+            margin-left: 50px;
+        }
+
+        #menu_bar {
+            height: 100%;
+            width: 50px;
+            top: 0;
+            left: 0;
+            font-size: 40px;
+            background: white;
+            position: fixed;
+        }
+
+        #navigation_bar {
+            height: 100%;
+            width: 0;
+            position: fixed;
+            top: 0;
+            left: 0;
+            background-color: black;
+            overflow-x: hidden;
+            transition: 0.05s;
+            padding-top: 75px;
+        }
+
+        #navigation_bar a {
+            padding: 5px 30px 5px 30px;
+            text-decoration: none;
+            font-size: 20px;
+            color: lightgrey;
+            display: block;
+            transition: 0.1s;
+        }
+
+        #navigation_bar a:hover {
+            color: gold;
+        }
+
+        #navigation_bar #close_navigation_bar {
+            position: absolute;
+            top: 0;
+            right: 0px;
+            font-size: 40px;
+        }
+
+        #navigation_bar span {
+            position: absolute;
+            margin-top: 7px;
+            padding: 5px 30px 5px 20px;
+            text-decoration: none;
+            display: block;
+            top: 0;
+            left: 0px;
+            font-size: 40px;
+            color: lightgrey;
+        }
+    </style>
+    <script>
+        var navBarChecked = 'All';
+        var classArray = <? classArray ?>;
+
+        function openNavBar() {
+            document.getElementById("navigation_bar").style.width = "300px";
+        }
+
+        function closeNavBar() {
+            document.getElementById("navigation_bar").style.width = "0";
+        }
+
+        function showById(ID) {
+            document.getElementById(navBarChecked).removeAttribute("style")
+            document.getElementById(ID).style.color = "red";
+
+            navBarChecked = ID;
+            closeNavBar();
+
+            for (var c = 0; c < classArray.length; c++) {
+                for (var i = 0; i < document.getElementsByClassName(classArray[c]).length; i++) {
+                    if ((classArray[c] == ID) || (ID == 'All'))
+                        document.getElementsByClassName(classArray[c])[i].removeAttribute("style");
+                    else
+                        document.getElementsByClassName(classArray[c])[i].style.display = "none";
+                    }
+            }
+        }
+    </script>
+</head>
+<body>
+    <div id="menu_bar">
+        <span style="cursor: pointer; padding: 0px 5px 0px 5px;" onclick="openNavBar()">&#9776;</span>
+        <div style="transform: rotate(-90deg); width: 190px; position:absolute; top:140px; left:-75px;" class="rotate">Open Menu</div>
+    </div>
+    <div id="navigation_bar">
+        <span>Show:</span>
+        <a href="javascript:void(0)" id="close_navigation_bar" onclick="closeNavBar()">&#10094;</a>
+        <a href="javascript:void(0)" id="All" onclick="showById('All')" style="color: red;">All</a>
+        <? nav_bar ?>
+    </div>
+    <br />
+    <a href=".\\timeline.svg" target="_blank"><img src=".\\timeline.svg" width="100%" /></a>
+    <br />
+    <table border="2">
+        <tr>
+            <td>Image</td>
+            <? class_table ?>
+            <td>Classification</td>
+        </tr>
+        <? evaluation_predict ?>
+    </table>
+</body>
+</html>
