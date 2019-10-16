@@ -11,7 +11,12 @@ VIDEO_FILE = "../data/udalosti.ts"
 OUTPUT_DIR = '../data/dataset_test_lstm'
 
 
-def video2img(file, output_directory, resize=None, get_frame=0.0, unit='select', distinguish=False, verbose=True):
+def video2img(file, output_directory, resize=None, get_frame=0.0, unit='select', distinguish=False,
+              min_frames=0, verbose=True):
+
+    # Creating a new directory if not exists
+    if not os.path.exists(output_directory):
+        os.mkdir(output_directory)
 
     # Warning that in the output directory may be some images
     if os.listdir(output_directory) != list():
@@ -53,16 +58,31 @@ def video2img(file, output_directory, resize=None, get_frame=0.0, unit='select',
             scorings['SAD_%d' % config['size']], config['neighbourhood_size'], config['neighbourhood_distance'],
             config['T1'], config['T2'], config['T3']
         )
+
+        get_frame_list = list()
+        cuts = [0] + cuts + [cap.get(cv2.CAP_PROP_FRAME_COUNT)]
+        for i in range(0, len(cuts) - 1):
+            if (cuts[i + 1] - cuts[i]) / get_frame < min_frames:
+                save = int((cuts[i + 1] - cuts[i]) / min_frames)
+
+                if save == 0:
+                    save = 1
+                get_frame_list.append(save)
+            else:
+                get_frame_list.append(get_frame)
+        get_frame = get_frame_list
+        cuts = cuts[1:-1]
     else:
         # The video cutter is not required
         cuts.append(math.inf)
+        get_frame = [get_frame]
     # endif distinguish // A video cutter is used to distinguish each scene
 
     # Get number of cuts
     num_cuts = len(cuts)
 
     # Print information about image saving
-    if verbose:
+    if verbose and min_frames in [0, 1]:
         if str(get_frame)[-1] == '1':
             termination = 'st'
         elif str(get_frame)[-1] == '2':
@@ -89,7 +109,7 @@ def video2img(file, output_directory, resize=None, get_frame=0.0, unit='select',
             break
 
         # Time to save frame
-        if frame_id % get_frame == 0:
+        if frame_id % get_frame[scene] == 0:
             # Use the video cutter information to divide images by scene type
             if distinguish and scene < num_cuts and frame_id >= cuts[scene]:
                 # A new scene is detected - create a directory to store images
@@ -115,18 +135,24 @@ def video2img(file, output_directory, resize=None, get_frame=0.0, unit='select',
             saved += 1
 
             if verbose and (saved % 50 == 0):
-                print(f'[%5d/%5d] images saved' % (saved, total_frames))
+                if min_frames in [0, 1]:
+                    print(f'[%5d/%5d] images saved' % (saved, total_frames))
+                else:
+                    print(f'[%5d/more than %5d] images saved' % (saved, total_frames))
         # endif frame_id % get_frame == 0 // Time to save frame
 
         time += dt
     # endwhile cap.isOpened() // Saving images from the video
 
     if verbose and (saved % 50 != 0):
-        print(f'[%5d/%5d] images saved' % (saved, total_frames))
+        if min_frames in [0, 1]:
+            print(f'[%5d/%5d] images saved' % (saved, total_frames))
+        else:
+            print('[the last] image saved')
 
     cap.release()
 
 
 if __name__ == "__main__":
-    # video2img(VIDEO_FILE, OUTPUT_DIR, resize=FRAME_SIZE, get_frame=0.2, unit='time', distinguish=True)
-    video2img(VIDEO_FILE, '../data/dataset_test', resize=FRAME_SIZE, get_frame=5, unit='time', distinguish=False)
+    video2img(VIDEO_FILE, '../data/dataset_test_lstm_2', resize=FRAME_SIZE, get_frame=0.2, unit='time', distinguish=True, min_frames=NUM_FRAMES)
+    #video2img(VIDEO_FILE, '../data/dataset_test', resize=FRAME_SIZE, get_frame=1, unit='time', distinguish=False)

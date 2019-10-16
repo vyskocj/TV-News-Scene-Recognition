@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
     <!-- The navigation bar was inspired by: https://www.w3schools.com/howto/howto_js_sidenav.asp -->
+    <!-- The evaluation table was inspired by: https://www.w3schools.com/css/css_table.asp -->
     <meta charset="UTF-8">
     <title>Evaluation</title>
     <style>
@@ -62,6 +63,41 @@
             font-size: 40px;
             color: lightgrey;
         }
+
+        #evaluation {
+            font-family: sans-serif;
+            border-collapse: collapse;
+            width: 100%;
+        }
+
+        #evaluation td, #evaluation th {
+            border: 1px solid black;
+            text-align: center;
+            padding: 5px;
+        }
+
+        #evaluation th {
+            padding-top: 10px;
+            padding-bottom: 10px;
+            background-color: red;
+            color: white;
+        }
+
+        #evaluation tr:nth-child(even) {
+            background-color: lightgrey;
+        }
+
+        .td-img .focus {
+            display: none;
+        }
+
+        .td-img:hover .focus{
+            display: block;
+        }
+
+        .td-img:hover .img{
+            display: none;
+        }
     </style>
     <script>
         var navBarChecked = 'All';
@@ -105,13 +141,14 @@
         <? nav_bar ?>
     </div>
     <br />
-    <a href=".\\timeline.svg" target="_blank"><img src=".\\timeline.svg" width="100%" /></a>
+    <? summary ?>
     <br />
-    <table border="2">
+    <table id="evaluation">
         <tr>
-            <td>Image</td>
+            <th style="width:20%">Image</th>
             <? class_table ?>
-            <td>Classification</td>
+            <th>Predicted label</th>
+            <? true_label ?>
         </tr>
         <? evaluation_predict ?>
     </table>

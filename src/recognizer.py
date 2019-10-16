@@ -1,4 +1,3 @@
-import h5py
 import os
 import xlwt
 import matplotlib.pyplot as plt
@@ -10,10 +9,13 @@ from keras.layers import LSTM, TimeDistributed
 from keras.layers import Dense, Dropout, Flatten
 
 from src.const_spec import *
+from src import evalgen
 
 
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 UNIT_TEST = False
+W_TRAIN_MODEL_WRONG_CLASS_NAMES = '[W] Check correctness of the class_names parameter that is passed to the' \
+                                  ' train_model function.'
 
 
 def create_model(input_shape, num_classes, use_lstm=True, first_part_trainable=True, first_part_weights=None):
@@ -101,20 +103,30 @@ def create_model(input_shape, num_classes, use_lstm=True, first_part_trainable=T
     return model
 
 
-def train_model(model, train_data, validation_data, epochs, batch_size, optimizer, output_path=None):
+def train_model(model, train_data, test_data, epochs, batch_size, optimizer, output_path=None, class_names=None,
+                tex_label=None):
     """
     Train model with the option to generate progress.
 
     :param model: Instance to the Neural Network to be trained.
     :param train_data: Tuple in format (data, labels). The data shape must be in input_shape format extended by
                        batch_shape, i.e. number of training data, the labels shape must be extended too.
-    :param validation_data: Same as train_data.
+    :param test_data: Same as train_data.
     :param epochs: The number of epochs for the model to be trained.
     :param batch_size: The number of samples that will be propagated through the network.
     :param optimizer: Keras optimizer instance.
     :param output_path: Optional, path where is generated training history and where is saved trained model.
+    :param class_names: Optional, the classification class names / labels.
+    :param tex_label: Optional, the label of Confusion matrix that is created for the LaTeX document.
+
     :return: History of training and output path.
     """
+    # set verbose depending on UNIT_TEST
+    if UNIT_TEST:
+        verbose = False
+    else:
+        verbose = True
+
     # set the output directory name
     if output_path is not None:
         if not os.path.exists(output_path):
@@ -133,8 +145,8 @@ def train_model(model, train_data, validation_data, epochs, batch_size, optimize
     # ==================================================================================================================
     # setting the compiler for training and fitting the model
     model.compile(loss=keras.losses.categorical_crossentropy, optimizer=optimizer, metrics=['accuracy'])
-    history = model.fit(train_data[0], train_data[1], validation_data=validation_data,
-                        batch_size=batch_size, epochs=epochs, shuffle='batch', verbose=(0 if UNIT_TEST else 1))
+    history = model.fit(train_data[0], train_data[1], validation_data=test_data,
+                        batch_size=batch_size, epochs=epochs, shuffle='batch', verbose=verbose)
 
     # ==================================================================================================================
     # Part of the output generation
@@ -144,6 +156,20 @@ def train_model(model, train_data, validation_data, epochs, batch_size, optimize
         # making a new directory by the date time
         output = output_path + ('\\' if output_path[-1] != '\\' else '') + output_dir + '\\'
         os.mkdir(output)
+
+        # define the class names if not passed
+        if class_names is None:
+            class_names = CLASS_NAMES
+
+        # ==============================================================================================================
+        # Saving the model and optimizer information
+        # ==============================================================================================================
+        model.save(output + 'model.h5')
+
+        with open(output + 'optimizer_config.txt', 'w') as f:
+            f.write(f'Epochs: %d\n' % epochs)
+            f.write(f'Optimizer: %s\n' % str(optimizer.__class__))
+            f.write(str(optimizer.get_config()))
 
         # preparing an Excel file for saving the training progress
         book = xlwt.Workbook(encoding='utf-8')
@@ -186,19 +212,44 @@ def train_model(model, train_data, validation_data, epochs, batch_size, optimize
         book.save(output + 'history.xls')
 
         # ==============================================================================================================
+        # Creating the validation HTML file and LaTeX table
+        # ==============================================================================================================
+        if len(class_names) != model.get_output_shape_at(-1)[1]:
+            print(W_TRAIN_MODEL_WRONG_CLASS_NAMES)
+            print(f' - functions that are not called: %s' %
+                  '(evalgen.create_tex_validation, evalgen.create_html_validation)')
+            print(f' - class_names: %s' % class_names)
+            print(f' - len(class_names) = %d' % len(class_names))
+            print(f' - expected number of classes = %d' % model.get_output_shape_at(-1)[1])
+        else:
+            # computing the confusion matrix
+            matrix, wrong_pred_vector = evalgen.get_confusion_matrix(model, test_data)
+
+            # make dir for html file
+            os.mkdir(output + 'HTML')
+
+            # check if grad_cam can be created
+            if len(model.get_input_shape_at(0)) == 5:
+                grad_cam = False
+            else:
+                grad_cam = True
+            # endif len(model.get_input_shape_at(0)) == 5 // check if grad_cam can be created
+
+            # creating the LaTeX table and validation HTML file
+            evalgen.create_tex_validation(matrix, class_names, output, label=tex_label, verbose=verbose)
+            evalgen.create_html_validation(model, class_names, test_data, output + 'HTML', grad_cam=grad_cam,
+                                           matrix_and_wrong_pred=(matrix, wrong_pred_vector), verbose=verbose)
+        # endif len(class_names) != model.get_output_shape_at(-1)[1] // Creating the val HTML file and LaTeX table
+
+        # ==============================================================================================================
         # Saving the model summary
         # ==============================================================================================================
         with open(output + 'model_summary.txt', 'w') as f:
             model.summary(print_fn=lambda x: f.write(x + '\n'), line_length=120)
-
-        # ==============================================================================================================
-        # Saving the model
-        # ==============================================================================================================
-        model.save(output + 'model.h5')
 
         if not UNIT_TEST:
             print('\n\n')
             print(f'The output was successfully saved: %s' % output)
     # endif output_path is not None // generate the output if required
 
-    return history, output
+    return history

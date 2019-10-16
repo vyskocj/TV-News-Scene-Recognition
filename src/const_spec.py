@@ -10,6 +10,10 @@ X_TEST = "test_data"
 Y_TRAIN = "train_labels"
 Y_TEST = "test_labels"
 
+# Batch sizes for training / validation
+BATCH_SIZE = 75    # batch size for time independent models
+BATCH_SIZE_TD = 5  # batch size for LSTM model
+
 # Shape for default Neural Network
 NUM_FRAMES = 25         # the number of frames that LSTM classifies
 FRAME_WIDTH = 320       # width of each frame / image

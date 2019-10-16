@@ -160,7 +160,7 @@ def shuffle_dataset(input_dataset, output_dataset, input_keys, output_keys=None,
                             labels.append(old_dataset[input_keys[d][i][j_lbls]][s, ...])
                         # endfor k, s in enumerate(shuffle_list) // save data to the dataset file
                     else:
-                        # dataset for time invariant distributed model
+                        # dataset for time independent distributed model
                         # save data, i.e. picture-by-picture to the new dataset file
                         for k, s in enumerate(shuffle_list):
                             # print progress every 50th set if print is required

@@ -48,16 +48,115 @@ if __name__ == '__main__':
             os.mkdir(output_path)
 
         # TODO: volat na lepším místě, generování do outputu po natrénování sítě
-        decisions = create_html(model, CLASS_NAMES, input_path, output_path, files_together=True)
+        decisions = create_html(model, CLASS_NAMES, input_path, output_path, portable=True)
+
+
+
+
+
+
+
 
     elif phase == 3:
-        model = keras.models.load_model('..\\models\\VGG16\\model.h5')
+        # model = keras.models.load_model('..\\models\\VGG16\\model.h5')
+        model = keras.models.Sequential()
+        model.add(keras.layers.Conv2D(64, (3, 3), padding="same", activation="relu", input_shape=(180, 320, 3)))
+        model.add(keras.layers.Conv2D(64, (3, 3), padding="same", activation="relu"))
+        model.add(keras.layers.MaxPooling2D((2, 2)))
+        model.add(keras.layers.Conv2D(128, (3, 3), padding="same", activation="relu"))
+        model.add(keras.layers.Conv2D(128, (3, 3), padding="same", activation="relu"))
+        model.add(keras.layers.MaxPooling2D((2, 2)))
+        model.add(keras.layers.Conv2D(256, (3, 3), padding="same", activation="relu"))
+        model.add(keras.layers.Conv2D(256, (3, 3), padding="same", activation="relu"))
+        model.add(keras.layers.Conv2D(256, (3, 3), padding="same", activation="relu"))
+        model.add(keras.layers.MaxPooling2D((2, 2)))
+        model.add(keras.layers.Conv2D(512, (3, 3), padding="same", activation="relu"))
+        model.add(keras.layers.Conv2D(512, (3, 3), padding="same", activation="relu"))
+        model.add(keras.layers.Conv2D(512, (3, 3), padding="same", activation="relu"))
+        model.add(keras.layers.MaxPooling2D((2, 2)))
+        model.add(keras.layers.Conv2D(512, (3, 3), padding="same", activation="relu"))
+        model.add(keras.layers.Conv2D(512, (3, 3), padding="same", activation="relu"))
+        model.add(keras.layers.Conv2D(512, (3, 3), padding="same", activation="relu"))
+        model.add(keras.layers.MaxPooling2D((2, 2)))
+        model.add(Flatten())
+        model.add(Dense(1400, activation='relu'))
+        model.add(Dropout(0.50))
+        model.add(Dense(9, activation='softmax'))
+        model.load_weights("..\\data\\weights_vgg16.h5")
+
         input_path = '..\\data\\dataset_test'
-        output_path = '..\\output\\html_VGG16'
+        output_path = '..\\output\\html_VGG16\\html_pred'
         if not os.path.exists(output_path):
             os.mkdir(output_path)
+
         # TODO: volat na lepším místě, generování do outputu po natrénování sítě
-        decisions = create_html(model, CLASS_NAMES_SH, input_path, output_path, files_together=True)
+        create_html(model, CLASS_NAMES_SH, input_path, output_path, portable=True, grad_cam=True)
+
+    elif phase == 31:
+
+        model = keras.models.load_model('..\\models\\LSTM\\model.h5')
+
+        input_path = '..\\data\\dataset_test_lstm_2'
+        output_path = '..\\output\\html_LSTM\\html_pred'
+        if not os.path.exists(output_path):
+            os.mkdir(output_path)
+
+        # TODO: volat na lepším místě, generování do outputu po natrénování sítě
+        decisions = create_html(model, CLASS_NAMES, input_path, output_path, portable=True)
+
+        output_path = '..\\output\\html_LSTM\\html_valid'
+        if not os.path.exists(output_path):
+            os.mkdir(output_path)
+
+        with h5py.File("..\\data\\dataset_lstm\\scene_recog.h5", 'r') as dataset:
+            x_test = dataset["test_data"]
+            y_test = keras.utils.to_categorical(dataset["test_labels"], NUM_CLASSES)
+
+            create_html_validation(model, CLASS_NAMES, (x_test, y_test), output_path, grad_cam=False)
+
+        # model = keras.models.load_model('..\\models\\VGG16\\model.h5')
+        model = keras.models.Sequential()
+        model.add(keras.layers.Conv2D(64, (3, 3), padding="same", activation="relu", input_shape=(180, 320, 3)))
+        model.add(keras.layers.Conv2D(64, (3, 3), padding="same", activation="relu"))
+        model.add(keras.layers.MaxPooling2D((2, 2)))
+        model.add(keras.layers.Conv2D(128, (3, 3), padding="same", activation="relu"))
+        model.add(keras.layers.Conv2D(128, (3, 3), padding="same", activation="relu"))
+        model.add(keras.layers.MaxPooling2D((2, 2)))
+        model.add(keras.layers.Conv2D(256, (3, 3), padding="same", activation="relu"))
+        model.add(keras.layers.Conv2D(256, (3, 3), padding="same", activation="relu"))
+        model.add(keras.layers.Conv2D(256, (3, 3), padding="same", activation="relu"))
+        model.add(keras.layers.MaxPooling2D((2, 2)))
+        model.add(keras.layers.Conv2D(512, (3, 3), padding="same", activation="relu"))
+        model.add(keras.layers.Conv2D(512, (3, 3), padding="same", activation="relu"))
+        model.add(keras.layers.Conv2D(512, (3, 3), padding="same", activation="relu"))
+        model.add(keras.layers.MaxPooling2D((2, 2)))
+        model.add(keras.layers.Conv2D(512, (3, 3), padding="same", activation="relu"))
+        model.add(keras.layers.Conv2D(512, (3, 3), padding="same", activation="relu"))
+        model.add(keras.layers.Conv2D(512, (3, 3), padding="same", activation="relu"))
+        model.add(keras.layers.MaxPooling2D((2, 2)))
+        model.add(Flatten())
+        model.add(Dense(1400, activation='relu'))
+        model.add(Dropout(0.50))
+        model.add(Dense(9, activation='softmax'))
+        model.load_weights("..\\data\\weights_vgg16.h5")
+
+        output_path = '..\\output\\html_VGG16\\html_valid'
+        if not os.path.exists(output_path):
+            os.mkdir(output_path)
+
+        with h5py.File("..\\data\\dataset\\scene_recog.h5", 'r') as dataset:
+            x_test = dataset["test_data"]
+            y_test = keras.utils.to_categorical(dataset["test_labels"], NUM_CLASSES)
+
+            create_html_validation(model, CLASS_NAMES, (x_test, y_test), output_path, grad_cam=True)
+
+
+
+
+
+
+
+
 
     elif phase == 4:
         model = keras.models.load_model('..\\models\\Own\\model.h5')
@@ -66,7 +165,7 @@ if __name__ == '__main__':
         if not os.path.exists(output_path):
             os.mkdir(output_path)
         # TODO: volat na lepším místě, generování do outputu po natrénování sítě
-        decisions = create_html(model, CLASS_NAMES_SH, input_path, output_path, files_together=True)
+        decisions = create_html(model, CLASS_NAMES, input_path, output_path, portable=True, grad_cam=True)
 
     elif phase == 5:
         dirs = os.listdir("..\\data\\dataset\\train")
@@ -96,7 +195,7 @@ if __name__ == '__main__':
 
         model.summary()
 
-        with h5py.File("..\\data\\dataset_ti.h5", 'r') as dataset:
+        with h5py.File("..\\data\\dataset\\scene_recog.h5", 'r') as dataset:
             x_train = dataset[X_TRAIN]
             y_train = keras.utils.to_categorical(dataset[Y_TRAIN], NUM_CLASSES)
 
@@ -104,8 +203,134 @@ if __name__ == '__main__':
             y_test = keras.utils.to_categorical(dataset[Y_TEST], NUM_CLASSES)
 
             num_epochs = 40
-            batch_size = 30
+            batch_size = 125
 
             train_model(model, (x_train, y_train), (x_test, y_test), num_epochs, batch_size,
                         keras.optimizers.SGD(lr=.001, momentum=.9, nesterov=True), output_path='..\\output')
 
+    elif phase == 10:
+        model = keras.models.Sequential()
+        model.add(keras.layers.Conv2D(64, (3, 3), padding="same", activation="relu", input_shape=(180, 320, 3)))
+        model.add(keras.layers.Conv2D(64, (3, 3), padding="same", activation="relu"))
+        model.add(keras.layers.MaxPooling2D((2, 2)))
+        model.add(keras.layers.Conv2D(128, (3, 3), padding="same", activation="relu"))
+        model.add(keras.layers.Conv2D(128, (3, 3), padding="same", activation="relu"))
+        model.add(keras.layers.MaxPooling2D((2, 2)))
+        model.add(keras.layers.Conv2D(256, (3, 3), padding="same", activation="relu"))
+        model.add(keras.layers.Conv2D(256, (3, 3), padding="same", activation="relu"))
+        model.add(keras.layers.Conv2D(256, (3, 3), padding="same", activation="relu"))
+        model.add(keras.layers.MaxPooling2D((2, 2)))
+        model.add(keras.layers.Conv2D(512, (3, 3), padding="same", activation="relu"))
+        model.add(keras.layers.Conv2D(512, (3, 3), padding="same", activation="relu"))
+        model.add(keras.layers.Conv2D(512, (3, 3), padding="same", activation="relu"))
+        model.add(keras.layers.MaxPooling2D((2, 2)))
+        model.add(keras.layers.Conv2D(512, (3, 3), padding="same", activation="relu"))
+        model.add(keras.layers.Conv2D(512, (3, 3), padding="same", activation="relu"))
+        model.add(keras.layers.Conv2D(512, (3, 3), padding="same", activation="relu"))
+        model.add(keras.layers.MaxPooling2D((2, 2)))
+        model.add(Flatten())
+        model.add(Dense(1400, activation='relu'))
+        model.add(Dropout(0.50))
+        model.add(Dense(9, activation='softmax'))
+        model.load_weights("..\\data\\weights_vgg16.h5")
+
+        with h5py.File("..\\data\\dataset\\scene_recog.h5", 'r') as dataset:
+            x_test = dataset["test_data"]
+            y_test = keras.utils.to_categorical(dataset["test_labels"], NUM_CLASSES)
+
+            #matrix, _ = get_confusion_matrix+(model, (x_test, y_test))
+            #print(matrix)
+
+            #create_tex_validation(matrix, CLASS_NAMES, '..\\output')
+            create_html_validation(model, CLASS_NAMES, (x_test, y_test), '..\\output\\test', grad_cam=True)
+
+    elif phase == 11:
+        model = keras.models.load_model('..\\models\\LSTM\\model.h5')
+
+        with h5py.File("..\\data\\dataset_lstm\\scene_recog.h5", 'r') as dataset:
+            x_test = dataset["test_data"]
+            y_test = keras.utils.to_categorical(dataset["test_labels"], NUM_CLASSES)
+
+            create_html_validation(model, CLASS_NAMES, (x_test, y_test), '..\\output\\test', grad_cam=False)
+
+    elif phase == 20:
+        vgg = keras.applications.VGG16(weights='imagenet', include_top=False, input_shape=INPUT_SHAPE)
+
+        model = keras.models.Sequential()
+        model.add(keras.layers.Conv2D(64, (3, 3), padding="same", activation="relu", input_shape=INPUT_SHAPE))
+        model.add(keras.layers.Conv2D(64, (3, 3), padding="same", activation="relu"))
+        model.add(keras.layers.MaxPooling2D((2, 2)))
+        model.add(keras.layers.Conv2D(128, (3, 3), padding="same", activation="relu"))
+        model.add(keras.layers.Conv2D(128, (3, 3), padding="same", activation="relu"))
+        model.add(keras.layers.MaxPooling2D((2, 2)))
+        model.add(keras.layers.Conv2D(256, (3, 3), padding="same", activation="relu"))
+        model.add(keras.layers.Conv2D(256, (3, 3), padding="same", activation="relu"))
+        model.add(keras.layers.Conv2D(256, (3, 3), padding="same", activation="relu"))
+        model.add(keras.layers.MaxPooling2D((2, 2)))
+        model.add(keras.layers.Conv2D(512, (3, 3), padding="same", activation="relu"))
+        model.add(keras.layers.Conv2D(512, (3, 3), padding="same", activation="relu"))
+        model.add(keras.layers.Conv2D(512, (3, 3), padding="same", activation="relu"))
+        model.add(keras.layers.MaxPooling2D((2, 2)))
+        model.add(keras.layers.Conv2D(512, (3, 3), padding="same", activation="relu"))
+        model.add(keras.layers.Conv2D(512, (3, 3), padding="same", activation="relu"))
+        model.add(keras.layers.Conv2D(512, (3, 3), padding="same", activation="relu"))
+        model.add(keras.layers.MaxPooling2D((2, 2)))
+        model.add_weight(vgg.get_weights())
+
+    elif phase == 21:
+        from keras.models import Model
+
+        model = keras.applications.VGG16(weights='imagenet', include_top=False, input_shape=INPUT_SHAPE)
+
+        x = model.layers[-1].output
+        x = Flatten()(x)
+        predictions = Dense(NUM_CLASSES, activation='softmax')(x)
+        model = Model(inputs=model.input, outputs=predictions)
+        model.summary()
+
+        with h5py.File("..\\data\\dataset\\scene_recog.h5", 'r') as dataset:
+            x_train = dataset[X_TRAIN]
+            y_train = keras.utils.to_categorical(dataset[Y_TRAIN], NUM_CLASSES)
+
+            x_test = dataset[X_TEST]
+            y_test = keras.utils.to_categorical(dataset[Y_TEST], NUM_CLASSES)
+
+            num_epochs = 40
+            batch_size = 75
+
+            train_model(model, (x_train, y_train), (x_test, y_test), num_epochs, batch_size,
+                        keras.optimizers.SGD(lr=.001, momentum=.90, nesterov=True), output_path='..\\output')
+
+    elif phase == 22:
+        model = keras.models.load_model('..\\output\\VGG16_lowparam\\model.h5')
+        input_path = '..\\data\\dataset_test'
+        output_path = '..\\output\\VGG16_lowparam\\html_pred\\'
+
+        if not os.path.exists(output_path):
+            os.mkdir(output_path)
+        # TODO: volat na lepším místě, generování do outputu po natrénování sítě
+        decisions = create_html(model, CLASS_NAMES, input_path, output_path, portable=True, grad_cam=True)
+
+    elif phase == 23:
+        from keras.models import Model
+        from keras.layers import LSTM, TimeDistributed
+
+        model = keras.models.Sequential()
+        model.add(
+            TimeDistributed(
+                VGG16(weights='imagenet', include_top=False),
+                input_shape=INPUT_SHAPE_TD,
+                trainable=False
+            )
+        )
+        x = model.layers[-1].output
+        x = TimeDistributed(Flatten())(x)
+        predictions = TimeDistributed(Dense(NUM_CLASSES, activation='softmax'))(x)
+        model = Model(inputs=model.input, outputs=predictions)
+
+        model.set_weights(keras.models.load_model('..\\output\\VGG16_lowparam\\model.h5').get_weights())
+
+        model.pop()
+
+        model.add(LSTM(32, input_shape=(NUM_FRAMES, model.layers[-1].shape())))
+        model.add(Dense(NUM_CLASSES, activation='softmax'))

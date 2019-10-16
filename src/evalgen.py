@@ -3,12 +3,14 @@ import shutil
 import cv2
 import json
 import re
+import time
 import numpy as np
 import matplotlib.pyplot as plt
 
 from PIL import Image
 from vis.visualization import visualize_cam
 
+from src.const_spec import *
 
 E_TEMPLATE_CLASSES = '[E] Pass the parameter to the template function: ' \
                      '"classes" - a list of neural network output names.'
@@ -20,6 +22,7 @@ E_TEMPLATE_PATH_OR_GHOST = '[E] Pass the parameter to the template function: ' \
                            '"path" or "ghost" - list of image paths.'
 E_TEMPLATE_GRAD_CAM = '[E] Pass the parameter to the template function: ' \
                       '"heat_file" - path to the image that represents the heat map of prediction.'
+W_TEMPLATE_VALID_MATRIX_MISSING = '[W] Validation matrix is missing, the summary table is not generated.'
 E_REPLACE_TAG_NOT_FOUND = '[E] The tag not found in template.'
 W_CREATE_HNTML_GC_NOT_SUP = '[W] The grad-cam is not supported for LSTM network.'
 
@@ -40,16 +43,31 @@ def template(part, file, **kwargs):
         if 'classes' not in kwargs.keys():
             raise Exception(E_TEMPLATE_CLASSES)
 
+        if 'validation' in kwargs.keys() and kwargs['validation'] is True:
+            width = 80 / (len(kwargs['classes']) + 2)
+            true_label = f'<th style="width:%.2f%%">True label</th>' % width
+            if 'matrix' in kwargs.keys():
+                summary = get_html_validation(kwargs['matrix'], kwargs['classes'], normalize=False, spaces='    ')[4:]
+            else:
+                print(W_TEMPLATE_VALID_MATRIX_MISSING)
+                summary = ''
+        else:
+            width = 80 / (len(kwargs['classes']) + 1)
+            true_label = ''
+            summary = '<a href=".\\timeline.svg" target="_blank"><img src=".\\timeline.svg" width="100%" /></a>'
+
         replace(string=str(kwargs['classes']), old_tag='classArray', file=file)
 
         nav_bar = ''
         class_table = ''
         for c in kwargs['classes']:
             nav_bar += '        <a href="javascript:void(0)" id="%s" onclick="showById(\'%s\')">%s</a>\n' % (c, c, c)
-            class_table += '            <td style="min-width:100px">' + c + '</td>\n'
+            class_table += (f'            <th style="width:%.2f%%">' % width) + c + '</th>\n'
 
         replace(string=nav_bar[8:-1], old_tag='nav_bar', file=file)             # 8  -> number of spaces, -1 -> '\n'
+        replace(string=summary, old_tag='summary', file=file)
         replace(string=class_table[12:-1], old_tag='class_table', file=file)    # 12 -> number of spaces, -1 -> '\n'
+        replace(string=true_label, old_tag='true_label', file=file)
         replace(string='', old_tag='evaluation_predict', file=file)
 
     elif part == 'evaluation.predict':
@@ -78,7 +96,7 @@ def template(part, file, **kwargs):
             view += '\n'
         else:
             # LSTM with
-            view += '<img src="' + kwargs['gif'] + '" title="' + get_time(kwargs['gif']) + '" />'
+            view += '<img src="' + kwargs['gif'] + '" title="' + get_time(kwargs['gif']) + '" />\n'
 
         if 'predict_file' in kwargs.keys() and kwargs['predict_file'] != '':
             # LSTM - Grad CAM is not supported - so do not care about line alignment for view variable!
@@ -87,25 +105,33 @@ def template(part, file, **kwargs):
                    '                </a>\n'
 
         output_vector = ''
-        for decision in kwargs['output_vector']:
-            output_vector += '            <td>' + ('<b>' if decision == max(kwargs['output_vector']) else '') \
-                             + (f'%.6f' % decision) + \
+        for i, decision in enumerate(kwargs['output_vector']):
+            output_vector += '            <td title="' + kwargs['classes'][i] + '">' + \
+                             ('<b>' if decision == max(kwargs['output_vector']) else '') + (f'%.6f' % decision) + \
                              ('</b>' if decision == max(kwargs['output_vector']) else '') + '</td>\n'
 
+        if 'true_label' in kwargs.keys():
+            tr_class = kwargs['classes'][np.argmax(kwargs['true_label'])]
+            true_label = '            <td title="True label">' + tr_class + '</td>\n'
+        else:
+            tr_class = kwargs['classes'][np.argmax(kwargs['output_vector'])]
+            true_label = ''
+
         string = (
-            '        <tr class="' + kwargs['classes'][np.argmax(kwargs['output_vector'])] + '">\n'
+            '        <tr class="' + tr_class + '">\n'
             '            <td class="td-img">\n'
             + view +
             '            </td>\n'
             + output_vector +
-            '            <td>' + kwargs['classes'][np.argmax(kwargs['output_vector'])] + '</td>\n'
+            '            <td title="Predicted">' + kwargs['classes'][np.argmax(kwargs['output_vector'])] + '</td>\n'
+            + true_label +
             '        </tr>\n'
         )
 
         insert(string, file)
 
     elif part == 'predict.img_list':
-        if 'path' not in kwargs.keys() or 'ghost' not in kwargs.keys():
+        if 'path' not in kwargs.keys() and 'ghost' not in kwargs.keys():
             raise Exception(E_TEMPLATE_PATH_OR_GHOST)
 
         if 'back_step' not in kwargs.keys():
@@ -192,6 +218,8 @@ def replace(string, old_tag, file):
 
 def create_html(model, classes, input_path, output_path, portable=False, grad_cam=False, adaptive_strides=True,
                 verbose=True):
+    if verbose:
+        print('[I] Creating the HTML file with predictions.')
 
     # Get input shape of model
     input_shape = model.get_input_shape_at(0)
@@ -204,7 +232,7 @@ def create_html(model, classes, input_path, output_path, portable=False, grad_ca
             print(W_CREATE_HNTML_GC_NOT_SUP)
             grad_cam = False
     else:
-        # Model is Time-Invariant
+        # Model is Time-Independent
         num_frames = 1
     # endif  len(input_shape) == 5 // Get number of input frames needed for single decision
 
@@ -262,15 +290,13 @@ def create_html(model, classes, input_path, output_path, portable=False, grad_ca
         pivot = 0               # Pivot is used to identify how many images can be used to predict
         read_rem_imgs = False   # Read the remaining images from the directory
         num_dirs_in_path = 0    # Counter that rises with each detection that a path leads to a directory
-        num_files_in_input_path = len(os.listdir(input_path))  # The total number of files in the input path
+        num_total_files = len(os.listdir(input_path))  # The total number of files in the input path
 
         # Variable for Grad CAM
         heat_file = ''          # The name of the img file that shows what the Neural Network sees
 
-        # Variable for verbose
-        num_total_files = len(os.listdir(input_path))
-
         # Read data from the given directory
+        t_last = time.time()
         for num_processed, file_name in enumerate(os.listdir(input_path)):
             path = input_path + '\\' + file_name
 
@@ -285,12 +311,13 @@ def create_html(model, classes, input_path, output_path, portable=False, grad_ca
                 # The file is not a directory but an image
                 path = input_path                                             # Change the path as input_path
                 directory = [file_name]                                       # Pass image name thought for cycle
-                num_imgs_in_dir = num_files_in_input_path - num_dirs_in_path  # Compute how many imgs can be in the dir
+                num_imgs_in_dir = num_total_files - num_dirs_in_path  # Compute how many imgs can be in the dir
             # endif os.path.isdir(path) // Check if the file is directory
 
-            if verbose and (num_processed % 50 == 0):
+            if verbose and (time.time() - t_last) > 5:
                 # how many dirs / images was done
                 print(f'[%3d %%] done' % (num_processed * 100 / num_total_files))
+                t_last = time.time()
 
             for img_name in directory:
                 # Load image and prepare it for model prediction
@@ -315,13 +342,6 @@ def create_html(model, classes, input_path, output_path, portable=False, grad_ca
                     # Save last image name - it represents when the image was taken - and continue
                     last_img_name = img_name
                     continue
-                elif input_imgs['len'] > num_frames:
-                    # More images are stored in the memory than can be passed through the network
-                    # Delete the "oldest" image
-                    # TODO: Zatím není použito, input_imgs se mažou níže u TODO
-                    input_imgs['path'].pop(0)
-                    input_imgs['imgs'].pop(0)
-                    input_imgs['len'] -= 1
 
                 # Copy the last image into the remaining empty fields of the array. This is needed when fewer images
                 # are available than they are needed to calculate the prediction.
@@ -336,7 +356,7 @@ def create_html(model, classes, input_path, output_path, portable=False, grad_ca
                     # LSTM network is used
                     network_say = model.predict(np.array([input_imgs['imgs']]))[0]
                 else:
-                    # Time-Invariant network
+                    # Time-Independent network
                     network_say = model.predict(np.array(input_imgs['imgs']))[0]
 
                 # Save decision of Neural Network if it is needed
@@ -381,6 +401,7 @@ def create_html(model, classes, input_path, output_path, portable=False, grad_ca
                         gifname = 'gifs\\' + re.search(r'(\d*ms)\.', img_name)[1] + '.gif'
                         gif[0].save(output_path + '\\' + gifname,
                                     save_all=True, append_images=gif[1:], duration=ms, loop=0)
+                        gifname = '.\\' + gifname
 
                     predict_file = f'%06.d' % file_index
                     with open(output_path + '\\predicts\\' + predict_file + '.html', 'w') as p_file:
@@ -430,7 +451,7 @@ def create_html(model, classes, input_path, output_path, portable=False, grad_ca
                     }
                     read_rem_imgs = False
 
-                # Change the last image name if model is Time-Invariant
+                # Change the last image name if model is Time-Independent
                 if num_frames == 1:
                     last_img_name = img_name
 
@@ -445,10 +466,10 @@ def create_html(model, classes, input_path, output_path, portable=False, grad_ca
 
         plt.figure(figsize=(20, 5))
 
-        time = [x / 60_000 for x in decisions['time']]
+        t = [x / 60_000 for x in decisions['time']]
 
-        plt.plot(time, decisions['class'])
-        plt.xticks(np.arange(min(time), max(time), 5))
+        plt.plot(t, decisions['class'])
+        plt.xticks(np.arange(min(t), max(t), 5))
         plt.yticks(np.arange(len(classes)), classes)
 
         # Show the major grid lines with dark grey lines
@@ -458,7 +479,7 @@ def create_html(model, classes, input_path, output_path, portable=False, grad_ca
         plt.minorticks_on()
         plt.grid(b=True, which='minor', color='#C0C0C0', linestyle='-', alpha=0.3)
 
-        plt.xlim((min(time), max(time)))
+        plt.xlim((min(t), max(t)))
 
         plt.title('Timeline of decisions')
         plt.ylabel('Classification')
@@ -467,23 +488,52 @@ def create_html(model, classes, input_path, output_path, portable=False, grad_ca
 
         plt.savefig(output_path + '\\timeline.svg')
 
+    if verbose:
+        print('[I] The HTML file with predictions was successfully created.')
 
-def get_predict_validation(model, data):
+
+def get_confusion_matrix(model, data, verbose=True):
+    if verbose:
+        print('[I] Generating the Confusion matrix.')
+
     x = data[0]
     y = data[1]
 
+    if len(x.shape) == 5:
+        batch_size = BATCH_SIZE_TD
+    else:
+        batch_size = BATCH_SIZE
+
+    num_data = len(y)
     num_classes = len(y[0])
     matrix = np.zeros((num_classes, num_classes), dtype='uint16')
-    predict = model.predict(x)
-    for i in range(0, len(y)):
+    predict = model.predict(x, batch_size=batch_size)
+
+    wrong_pred = {
+        'position': list(),
+        'prediction': list()
+    }
+    for i in range(0, num_data):
         network_y = np.argmax(predict[i])
         supervisor_y = np.argmax(y[i])
         matrix[supervisor_y, network_y] += 1
+        if network_y != supervisor_y:
+            wrong_pred['position'].append(i)
+            wrong_pred['prediction'].append(predict[i])
 
-    return matrix
+    if verbose:
+        print('[I] The Confusion matrix was successfully generated.')
+
+    return matrix, wrong_pred
 
 
-def create_tex_validation(matrix, class_names, output_path, normalize=True, label='my_label'):
+def create_tex_validation(matrix, class_names, output_path, normalize=True, label=None, verbose=True):
+    if verbose:
+        print('[I] Creating the Confusion table for LaTeX.')
+
+    if label is None:
+        label = 'my_label'
+
     with open(output_path + '\\confusion_matrix.tex', 'w') as tex_file:
         num_classes = len(class_names)
 
@@ -506,7 +556,7 @@ def create_tex_validation(matrix, class_names, output_path, normalize=True, labe
 
         tex_file.write('\\\\ \\cmidrule(l){2-' + str(num_classes + 2) + '}\n')
 
-        den = 1
+        mat_sum = 1
         for c in range(0, num_classes):
 
             if c < num_classes - 1:
@@ -517,9 +567,9 @@ def create_tex_validation(matrix, class_names, output_path, normalize=True, labe
             tex_file.write('\\multicolumn{1}{l|}{' + class_names[c] + '}')
 
             if normalize is True:
-                den = matrix[c].max()
+                mat_sum = matrix[c].sum()
 
-            mat_sum = matrix[c].sum()
+            den = matrix[c].max()
 
             [tex_file.write(' & \\cellcolor[gray]{' + str(1 - matrix[c, i] / 2 / den) + '}'
                             + (f'%.3f' % (matrix[c, i] / mat_sum)))
@@ -534,6 +584,172 @@ def create_tex_validation(matrix, class_names, output_path, normalize=True, labe
             '\\end{table}\n'
         )
 
+    if verbose:
+        print('[I] The LaTeX Confusion table was successfully created.')
 
-def create_html_validation(model, data, classes, output_path):
-    pass
+
+def get_html_validation(matrix, class_names, normalize=True, spaces=''):
+    width = int(100 / (len(class_names) + 2))
+    first_line = spaces + '        <td width="' + str(width) + '%"></td>\n'
+
+    for label in class_names:
+        first_line += spaces + '        <td width="' + str(width) + '%">' + label + '</td>\n'
+
+    table = ''
+    mat_sum = 1
+    for i, line in enumerate(matrix):
+        table += spaces + '    <tr>\n'
+        table += spaces + '        <td>' + class_names[i] + '</td>\n'
+        if normalize is True:
+            mat_sum = matrix[i].sum()
+
+        den = matrix[i].max()
+
+        for val in line:
+            color = int((1 - val / 2 / den) * 255)
+            table += (
+                    spaces + '        <td style="background:rgb' + str((color, color, color)) + '">' +
+                    str(f'%.3f' % (val / mat_sum)if normalize else int(val)) + '</td>\n'
+            )
+
+        table += spaces + '    </tr>\n'
+
+    return (
+        spaces + '<table width="100%">\n' +
+        spaces + '    <caption>Predicted label</caption>\n' +
+        spaces + '    <tr>\n' +
+        spaces + '        <td rowspan="' + str(len(class_names) + 1) + '">True label</td>\n'
+        + first_line +
+        spaces + '    </tr>\n'
+        + table +
+        spaces + '</table>'
+    )
+
+
+def create_html_validation(model, classes, data, output_path, matrix_and_wrong_pred=None, grad_cam=False, gif_ms=100,
+                           verbose=True):
+    if verbose:
+        print('[I] Creating the HTML validation file.')
+
+    # Get input shape of model
+    input_shape = model.get_input_shape_at(0)
+
+    # Get number of input frames needed for single decision
+    if len(input_shape) == 5:
+        # Model type is LSTM
+        num_frames = input_shape[1]
+        if grad_cam is True:
+            print(W_CREATE_HNTML_GC_NOT_SUP)
+            grad_cam = False
+    else:
+        # Model is Time-Independent
+        num_frames = 1
+    # endif  len(input_shape) == 5 // Get number of input frames needed for single decision
+
+    # LSTM Network - create directory for the html files with the images that were used to predict
+    if num_frames > 1:
+        if not os.path.exists(output_path + '\\predicts'):
+            os.mkdir(output_path + '\\predicts')
+        if not os.path.exists(output_path + '\\gifs'):
+            os.mkdir(output_path + '\\gifs')
+
+    # The images will be copied to the HTML file
+    if not os.path.exists(output_path + '\\imgs'):
+        os.mkdir(output_path + '\\imgs')
+
+    # The output of Grad CAM
+    if grad_cam and not os.path.exists(output_path + '\\focuses'):
+        os.mkdir(output_path + '\\focuses')
+
+    # Copy template and rename it
+    shutil.copy('..\\temp\\evaltemp.html', output_path + '\\evaluation.html')
+
+    # Compute the confusion matrix and save prediction of wrong classification
+    if matrix_and_wrong_pred is None:
+        matrix, wrong_pred = get_confusion_matrix(model, data)
+    else:
+        matrix = matrix_and_wrong_pred[0]
+        wrong_pred = matrix_and_wrong_pred[1]
+
+    # Write the validation evaluation to the html file
+    with open(output_path + '\\evaluation.html', 'r+') as html_file:
+        # Load the template and save it to the html file
+        template('evaluation.prepare_to_predict', html_file, classes=classes, validation=True, matrix=matrix)
+
+        # Variables for LSTM
+        predict_file = ''       # The name of the html file with all frames that were used to predict
+
+        num_total_imgs = len(wrong_pred['position'])  # The total number of images with wrong prediction
+
+        # Variable for Grad CAM
+        heat_file = ''          # The name of the img file that shows what the Neural Network sees
+        img = None
+        img_name = ''
+
+        # Read indexes of wrong predictions
+        t_last = time.time()
+        for num_processed, pos in enumerate(wrong_pred['position']):
+            input_imgs = {
+                'path': list(),
+                'len': 0
+            }
+
+            if verbose and (time.time() - t_last) > 5:
+                # how many images was done
+                print(f'[%3d %%] done' % (num_processed * 100 / num_total_imgs))
+                t_last = time.time()
+
+            if num_frames > 1:
+                img_dir = f'%06.d' % num_processed
+                if not os.path.exists(output_path + '\\imgs\\' + img_dir):
+                    os.mkdir(output_path + '\\imgs\\' + img_dir)
+
+                for i in range(0, num_frames):
+                    img = data[0][pos, i, ...]
+                    img_name = f'%03.d.jpg' % i
+                    path_to_img = 'imgs\\' + img_dir + '\\' + img_name
+                    cv2.imwrite(output_path + '\\' + path_to_img, np.multiply(img, 255))
+
+                    input_imgs['path'].append(path_to_img)
+                    input_imgs['len'] += 1
+            else:
+                img = data[0][pos, ...]
+                img_name = f'%06.d.jpg' % num_processed
+                path_to_img = 'imgs\\' + img_name
+                cv2.imwrite(output_path + '\\' + path_to_img, np.multiply(img, 255))
+
+                input_imgs['path'].append(path_to_img)
+                input_imgs['len'] += 1
+
+            prediction = wrong_pred['prediction'][num_processed]
+            decision = np.argmax(prediction)
+
+            gifname = None
+            if num_frames > 1:
+                predict_file = f'%06.d' % num_processed
+
+                # Create gif
+                gif = []
+                for i in input_imgs['path']:
+                    gif.append(Image.open(output_path + '\\' + i))
+
+                gifname = 'gifs\\' + predict_file + '.gif'
+                gif[0].save(output_path + '\\' + gifname, save_all=True, append_images=gif[1:], duration=gif_ms, loop=0)
+                gifname = '.\\' + gifname
+
+                with open(output_path + '\\predicts\\' + predict_file + '.html', 'w') as p_file:
+                    template('predict.img_list', p_file, path=input_imgs['path'], back_step='.\\..\\')
+            elif grad_cam:
+                # What the Neural Network see - it is not supported for LSTM network
+                heat_map = visualize_cam(model, -1, decision, img)
+                heat_file = 'focuses\\' + img_name
+                cv2.imwrite(output_path + '\\' + heat_file, heat_map)
+                heat_file = '.\\' + heat_file
+            # Saving images to the directory
+
+            template('evaluation.predict', html_file, predict_file=predict_file, output_vector=prediction,
+                     true_label=data[1][pos], gif=gifname, classes=classes, view=('.\\' + input_imgs['path'][0]),
+                     grad_cam=grad_cam, heat_file=heat_file)
+
+    if verbose:
+        print('[I] The HTML validation file was successfully created.')
