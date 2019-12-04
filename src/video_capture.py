@@ -6,11 +6,6 @@ from src.const_spec import *
 from ext import cut_detector as cd
 
 
-# TODO: přehodit na lepší místo - do mainu
-VIDEO_FILE = "../data/udalosti.ts"
-OUTPUT_DIR = '../data/dataset_test_lstm'
-
-
 def video2img(file, output_directory, resize=None, get_frame=0.0, unit='select', distinguish=False,
               min_frames=0, verbose=True):
 
@@ -154,5 +149,8 @@ def video2img(file, output_directory, resize=None, get_frame=0.0, unit='select',
 
 
 if __name__ == "__main__":
-    video2img(VIDEO_FILE, '../data/dataset_test_lstm_2', resize=FRAME_SIZE, get_frame=0.2, unit='time', distinguish=True, min_frames=NUM_FRAMES)
+    VIDEO_FILE = "../data/zpravy_TV_prima.ts"
+    OUTPUT_DIR = '../data/dataset_test_TV_prima'
+
+    video2img(VIDEO_FILE, OUTPUT_DIR, resize=FRAME_SIZE, get_frame=0.2, unit='time', distinguish=True, min_frames=NUM_FRAMES)
     #video2img(VIDEO_FILE, '../data/dataset_test', resize=FRAME_SIZE, get_frame=1, unit='time', distinguish=False)

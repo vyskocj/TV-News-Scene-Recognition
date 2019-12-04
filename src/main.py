@@ -92,7 +92,7 @@ if __name__ == '__main__':
         # TODO: volat na lepším místě, generování do outputu po natrénování sítě
         create_html(model, CLASS_NAMES_SH, input_path, output_path, portable=True, grad_cam=True)
 
-    elif phase == 31:
+    elif phase == 331:
 
         model = keras.models.load_model('..\\models\\LSTM\\model.h5')
 
@@ -334,3 +334,191 @@ if __name__ == '__main__':
 
         model.add(LSTM(32, input_shape=(NUM_FRAMES, model.layers[-1].shape())))
         model.add(Dense(NUM_CLASSES, activation='softmax'))
+
+    elif phase == 30:
+        dirs = os.listdir("..\\data\\dataset_lstm\\test")
+        test_data_paths = ["..\\data\\dataset_lstm\\test\\" + name for name in dirs]
+
+        create_dataset('..\\data\\dataset_lstm\\test_prima.h5', test_data_paths=test_data_paths, img_shape=(25, 180, 320, 3), lstm=True)
+
+    elif phase == 31:
+        model = keras.models.load_model('..\\models\\LSTM\\model.h5')
+
+        with h5py.File('..\\data\\dataset_lstm\\test_prima.h5', 'r') as dataset:
+            x_test = dataset["test_data"]
+            y_test = keras.utils.to_categorical(dataset["test_labels"], NUM_CLASSES)
+
+            create_html_validation(model, CLASS_NAMES, (x_test, y_test), '..\\output\\test_lstm', grad_cam=False)
+
+    elif phase == 32:
+        dirs = os.listdir("..\\data\\dataset\\test")
+        test_data_paths = ["..\\data\\dataset\\test\\" + name for name in dirs]
+
+        create_dataset('..\\data\\dataset\\test_prima.h5', test_data_paths=test_data_paths, img_shape=(180, 320, 3), lstm=False)
+
+    elif phase == 33:
+        model = keras.models.Sequential()
+        model.add(keras.layers.Conv2D(64, (3, 3), padding="same", activation="relu", input_shape=(180, 320, 3)))
+        model.add(keras.layers.Conv2D(64, (3, 3), padding="same", activation="relu"))
+        model.add(keras.layers.MaxPooling2D((2, 2)))
+        model.add(keras.layers.Conv2D(128, (3, 3), padding="same", activation="relu"))
+        model.add(keras.layers.Conv2D(128, (3, 3), padding="same", activation="relu"))
+        model.add(keras.layers.MaxPooling2D((2, 2)))
+        model.add(keras.layers.Conv2D(256, (3, 3), padding="same", activation="relu"))
+        model.add(keras.layers.Conv2D(256, (3, 3), padding="same", activation="relu"))
+        model.add(keras.layers.Conv2D(256, (3, 3), padding="same", activation="relu"))
+        model.add(keras.layers.MaxPooling2D((2, 2)))
+        model.add(keras.layers.Conv2D(512, (3, 3), padding="same", activation="relu"))
+        model.add(keras.layers.Conv2D(512, (3, 3), padding="same", activation="relu"))
+        model.add(keras.layers.Conv2D(512, (3, 3), padding="same", activation="relu"))
+        model.add(keras.layers.MaxPooling2D((2, 2)))
+        model.add(keras.layers.Conv2D(512, (3, 3), padding="same", activation="relu"))
+        model.add(keras.layers.Conv2D(512, (3, 3), padding="same", activation="relu"))
+        model.add(keras.layers.Conv2D(512, (3, 3), padding="same", activation="relu"))
+        model.add(keras.layers.MaxPooling2D((2, 2)))
+        model.add(Flatten())
+        model.add(Dense(1400, activation='relu'))
+        model.add(Dropout(0.50))
+        model.add(Dense(9, activation='softmax'))
+        model.load_weights("..\\data\\weights_vgg16.h5")
+
+        with h5py.File('..\\data\\dataset\\test_prima.h5', 'r') as dataset:
+            x_test = dataset["test_data"]
+            y_test = keras.utils.to_categorical(dataset["test_labels"], NUM_CLASSES)
+
+            create_html_validation(model, CLASS_NAMES, (x_test, y_test), '..\\output\\test_vgg16', grad_cam=True)
+
+    elif phase == 50:
+        model = keras.applications.InceptionResNetV2(include_top=False, input_shape=(180, 320, 3))
+
+        for l in model.layers:
+            l.trainable = False
+
+        x = model.layers[-1].output
+        x = keras.layers.GlobalAveragePooling2D()(x)
+
+        predictions = keras.layers.Dense(NUM_CLASSES, activation='softmax')(x)
+        model = keras.models.Model(inputs=model.input, outputs=predictions)
+
+        model.summary()
+
+        with h5py.File("..\\data\\dataset\\scene_recog.h5", 'r') as dataset:
+            x_train = dataset["train_data"]
+            y_train = keras.utils.to_categorical(dataset["train_labels"], NUM_CLASSES)
+
+            x_test = dataset["test_data"]
+            y_test = keras.utils.to_categorical(dataset["test_labels"], NUM_CLASSES)
+
+            num_epochs = 5
+            batch_size = 30
+
+            train_model(model, (x_train, y_train), (x_test, y_test), num_epochs, batch_size,
+                        keras.optimizers.SGD(lr=.001, momentum=.9, nesterov=True), output_path='..\\output')
+
+    elif phase == 51:
+        model = keras.models.load_model('..\\output\\2019-11-09_23-46-00\\model.h5')
+
+        for l in model.layers:
+            l.trainable = True
+
+        with h5py.File("..\\data\\dataset\\scene_recog.h5", 'r') as dataset:
+            x_train = dataset["train_data"]
+            y_train = keras.utils.to_categorical(dataset["train_labels"], NUM_CLASSES)
+
+            x_test = dataset["test_data"]
+            y_test = keras.utils.to_categorical(dataset["test_labels"], NUM_CLASSES)
+
+            num_epochs = 20
+            batch_size = 30
+
+            train_model(model, (x_train, y_train), (x_test, y_test), num_epochs, batch_size,
+                        keras.optimizers.SGD(lr=.00001, momentum=.9), output_path='..\\output')
+
+    elif phase == 52:
+        model = keras.models.load_model('..\\output\\2019-11-11_07-03-15\\model.h5')
+
+        for l in model.layers:
+            l.trainable = True
+
+        with h5py.File("..\\data\\dataset\\scene_recog.h5", 'r') as dataset:
+            x_train = dataset["train_data"]
+            y_train = keras.utils.to_categorical(dataset["train_labels"], NUM_CLASSES)
+
+            x_test = dataset["test_data"]
+            y_test = keras.utils.to_categorical(dataset["test_labels"], NUM_CLASSES)
+
+            num_epochs = 20
+            batch_size = 20
+
+            train_model(model, (x_train, y_train), (x_test, y_test), num_epochs, batch_size,
+                        keras.optimizers.Adam(0.0001), output_path='..\\output')
+
+    elif phase == 53:
+        model = keras.applications.InceptionResNetV2(include_top=False, input_shape=(180, 320, 3))
+
+        x = model.layers[-1].output
+        x = keras.layers.Flatten()(x)
+
+        predictions = keras.layers.Dense(NUM_CLASSES, activation='softmax')(x)
+        model = keras.models.Model(inputs=model.input, outputs=predictions)
+
+        with h5py.File("..\\data\\dataset\\scene_recog.h5", 'r') as dataset:
+            x_train = dataset["train_data"]
+            y_train = keras.utils.to_categorical(dataset["train_labels"], NUM_CLASSES)
+
+            x_test = dataset["test_data"]
+            y_test = keras.utils.to_categorical(dataset["test_labels"], NUM_CLASSES)
+
+            num_epochs = 20
+            batch_size = 20
+
+            train_model(model, (x_train, y_train), (x_test, y_test), num_epochs, batch_size,
+                        keras.optimizers.SGD(lr=.001, momentum=.9, nesterov=True), output_path='..\\output')
+
+    elif phase == 54:
+        model = keras.applications.VGG16(include_top=False, input_shape=(180, 320, 3))
+
+        x = model.layers[-1].output
+        x = keras.layers.Flatten()(x)
+
+        predictions = keras.layers.Dense(NUM_CLASSES, activation='softmax')(x)
+        model = keras.models.Model(inputs=model.input, outputs=predictions)
+
+        with h5py.File("..\\data\\dataset\\scene_recog.h5", 'r') as dataset:
+            x_train = dataset["train_data"]
+            y_train = keras.utils.to_categorical(dataset["train_labels"], NUM_CLASSES)
+
+            x_test = dataset["test_data"]
+            y_test = keras.utils.to_categorical(dataset["test_labels"], NUM_CLASSES)
+
+            num_epochs = 20
+            batch_size = 20
+
+            train_model(model, (x_train, y_train), (x_test, y_test), num_epochs, batch_size,
+                        keras.optimizers.SGD(lr=.001, momentum=.9, nesterov=True), output_path='..\\output')
+
+    elif phase == 55:
+        with h5py.File('..\\data\\dataset\\test_prima.h5', 'r') as dataset:
+            x_test = dataset["test_data"]
+            y_test = keras.utils.to_categorical(dataset["test_labels"], NUM_CLASSES)
+
+            model = keras.models.load_model('..\\output\\2019-11-14_06-05-36_GAP\\model.h5')
+            create_html_validation(model, CLASS_NAMES, (x_test, y_test), '..\\output\\TEST_RUN', grad_cam=False,
+                                   acc_loss=['..\\output\\2019-11-14_06-05-36_GAP\\acc.svg', '..\\output\\2019-11-14_06-05-36_GAP\\loss.svg'])
+
+            model = keras.models.load_model('..\\output\\2019-11-14_23-48-35_VGG16\\model.h5')
+            create_html_validation(model, CLASS_NAMES, (x_test, y_test), '..\\output\\TEST_RUN2', grad_cam=False)
+
+    elif phase == 60:
+
+        model = VGG16(include_top=False, input_shape=INPUT_SHAPE)
+
+        x = model.layers[-1].output
+        x = Flatten()(x)
+        x = Dense(512, activation='relu')(x)
+        x = Dropout(0.2)(x)
+
+        predictions = keras.layers.Dense(NUM_CLASSES, activation='softmax')(x)
+        model = Model(inputs=model.input, outputs=predictions)
+
+        model.summary()

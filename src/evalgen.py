@@ -22,20 +22,20 @@ E_TEMPLATE_PATH_OR_GHOST = '[E] Pass the parameter to the template function: ' \
                            '"path" or "ghost" - list of image paths.'
 E_TEMPLATE_GRAD_CAM = '[E] Pass the parameter to the template function: ' \
                       '"heat_file" - path to the image that represents the heat map of prediction.'
-W_TEMPLATE_VALID_MATRIX_MISSING = '[W] Validation matrix is missing, the summary table is not generated.'
 E_REPLACE_TAG_NOT_FOUND = '[E] The tag not found in template.'
+W_TEMPLATE_VALID_MATRIX_MISSING = '[W] Validation matrix is missing, the summary table is not generated.'
 W_CREATE_HNTML_GC_NOT_SUP = '[W] The grad-cam is not supported for LSTM network.'
 
 
 def get_time(filename):
-    time = re.search(r'(\d+)ms', filename)
-    if time is not None:
-        time = f'%3d:%02d:%03d [min:s:ms]' % \
-               (int(time[1]) / 60_000, (int(time[1]) / 1000) % 60, (int(time[1]) % 1000))
+    t = re.search(r'(\d+)ms', filename)
+    if t is not None:
+        t = f'%3d:%02d:%03d [min:s:ms]' % \
+               (int(t[1]) / 60_000, (int(t[1]) / 1000) % 60, (int(t[1]) % 1000))
     else:
-        time = ''
+        t = ''
 
-    return time
+    return t
 
 
 def template(part, file, **kwargs):
@@ -47,14 +47,18 @@ def template(part, file, **kwargs):
             width = 80 / (len(kwargs['classes']) + 2)
             true_label = f'<th style="width:%.2f%%">True label</th>' % width
             if 'matrix' in kwargs.keys():
-                summary = get_html_validation(kwargs['matrix'], kwargs['classes'], normalize=False, spaces='    ')[4:]
+                if 'acc_loss' not in kwargs.keys():
+                    kwargs['acc_loss'] = None
+
+                summary = get_html_validation(kwargs['matrix'], kwargs['classes'], normalize=False, spaces='    ',
+                                              acc_loss=kwargs['acc_loss'])[4:]
             else:
                 print(W_TEMPLATE_VALID_MATRIX_MISSING)
                 summary = ''
         else:
             width = 80 / (len(kwargs['classes']) + 1)
             true_label = ''
-            summary = '<a href=".\\timeline.svg" target="_blank"><img src=".\\timeline.svg" width="100%" /></a>'
+            summary = '<a href="./timeline.svg" target="_blank"><img src="./timeline.svg" width="100%" /></a>'
 
         replace(string=str(kwargs['classes']), old_tag='classArray', file=file)
 
@@ -100,7 +104,7 @@ def template(part, file, **kwargs):
 
         if 'predict_file' in kwargs.keys() and kwargs['predict_file'] != '':
             # LSTM - Grad CAM is not supported - so do not care about line alignment for view variable!
-            view = '                <a href=".\\predicts\\' + kwargs['predict_file'] + '.html" target="_blank">\n' \
+            view = '                <a href="./predicts/' + kwargs['predict_file'] + '.html" target="_blank">\n' \
                    '    ' + view + \
                    '                </a>\n'
 
@@ -166,7 +170,7 @@ def get_back_step(input_path, output_path):
 
     output_step.remove('..')
 
-    return '..\\' * (len(output_step) - input_step.count('..'))  # multiplying by a negative number does not matter
+    return '../' * (len(output_step) - input_step.count('..'))  # multiplying by a negative number does not matter
 
 
 def insert(string, file):
@@ -216,7 +220,7 @@ def replace(string, old_tag, file):
     raise Exception(E_REPLACE_TAG_NOT_FOUND)
 
 
-def create_html(model, classes, input_path, output_path, portable=False, grad_cam=False, adaptive_strides=True,
+def create_html(model, classes, input_path, output_path, portable=True, grad_cam=False, adaptive_strides=True,
                 verbose=True):
     if verbose:
         print('[I] Creating the HTML file with predictions.')
@@ -241,30 +245,30 @@ def create_html(model, classes, input_path, output_path, portable=False, grad_ca
 
     # LSTM Network - create directory for the html files with the images that were used to predict
     if num_frames > 1:
-        if not os.path.exists(output_path + '\\predicts'):
-            os.mkdir(output_path + '\\predicts')
-        if not os.path.exists(output_path + '\\gifs'):
-            os.mkdir(output_path + '\\gifs')
+        if not os.path.exists(os.path.join(output_path, 'predicts')):
+            os.mkdir(os.path.join(output_path, 'predicts'))
+        if not os.path.exists(os.path.join(output_path, 'gifs')):
+            os.mkdir(os.path.join(output_path, 'gifs'))
 
     # The images will be copied to the HTML file
-    if portable and not os.path.exists(output_path + '\\imgs'):
-        os.mkdir(output_path + '\\imgs')
+    if portable and not os.path.exists(os.path.join(output_path, 'imgs')):
+        os.mkdir(os.path.join(output_path, 'imgs'))
 
     # The output of Grad CAM
-    if grad_cam and not os.path.exists(output_path + '\\focuses'):
-        os.mkdir(output_path + '\\focuses')
+    if grad_cam and not os.path.exists(os.path.join(output_path, 'focuses')):
+        os.mkdir(os.path.join(output_path, 'focuses'))
 
     # Copy template and rename it
-    shutil.copy('..\\temp\\evaltemp.html', output_path + '\\evaluation.html')
+    shutil.copy(os.path.join(os.path.dirname(__file__), '..', EVALTEMP), os.path.join(output_path, 'evaluation.html'))
 
     # Write the evaluation to the html file
-    with open(output_path + '\\evaluation.html', 'r+') as html_file:
+    with open(os.path.join(output_path, 'evaluation.html'), 'r+') as html_file:
         # Load the template and save it to the html file
         template('evaluation.prepare_to_predict', html_file, classes=classes)
 
         # Compute how many back steps it takes from html file to the images
         if portable:
-            back_step = '.\\'
+            back_step = './'
         else:
             back_step = get_back_step(input_path, output_path)
 
@@ -298,7 +302,7 @@ def create_html(model, classes, input_path, output_path, portable=False, grad_ca
         # Read data from the given directory
         t_last = time.time()
         for num_processed, file_name in enumerate(os.listdir(input_path)):
-            path = input_path + '\\' + file_name
+            path = os.path.join(input_path, file_name)
 
             # Check if the file is directory
             if os.path.isdir(path):
@@ -314,19 +318,19 @@ def create_html(model, classes, input_path, output_path, portable=False, grad_ca
                 num_imgs_in_dir = num_total_files - num_dirs_in_path  # Compute how many imgs can be in the dir
             # endif os.path.isdir(path) // Check if the file is directory
 
-            if verbose and (time.time() - t_last) > 5:
+            if verbose and (time.time() - t_last) > PRINT_STATUS:
                 # how many dirs / images was done
                 print(f'[%3d %%] done' % (num_processed * 100 / num_total_files))
                 t_last = time.time()
 
             for img_name in directory:
                 # Load image and prepare it for model prediction
-                path_to_img = path + '\\' + img_name
+                path_to_img = os.path.join(path, img_name)
                 img = cv2.imread(path_to_img)
                 img = cv2.resize(img, (img_shape[1], img_shape[0]), interpolation=cv2.INTER_CUBIC)
                 if portable:
-                    path_to_img = 'imgs\\' + img_name
-                    cv2.imwrite(output_path + '\\' + path_to_img, img)
+                    path_to_img = os.path.join('imgs', img_name)
+                    cv2.imwrite(os.path.join(output_path, path_to_img), img)
                 img = img.astype("float32")
                 img = np.divide(img, 255.0)
 
@@ -383,36 +387,38 @@ def create_html(model, classes, input_path, output_path, portable=False, grad_ca
                     # Create gif
                     gif = []
                     for i in input_imgs['path']:
-                        gif.append(Image.open(output_path + '\\' + i))
+                        gif.append(Image.open(os.path.join(output_path, i)))
 
                     ms = 100
-                    crt_gif = True
+                    crt_gif = False
                     if len(input_imgs['path']) >= 2:
-                        # Get ms
+                        # Get actual framerate
                         ms_1 = re.search(r'(\d*)ms', input_imgs['path'][0])
                         ms_2 = re.search(r'(\d*)ms', input_imgs['path'][1])
 
                         if ms_1 is not None and ms_2 is not None:
                             ms = int(ms_2[1]) - int(ms_1[1])
+                            crt_gif = True
                         else:
                             crt_gif = False
+                            gifname = None
 
                     if crt_gif:
-                        gifname = 'gifs\\' + re.search(r'(\d*ms)\.', img_name)[1] + '.gif'
-                        gif[0].save(output_path + '\\' + gifname,
+                        gifname = os.path.join('gifs', re.search(r'(\d*ms)\.', img_name)[1] + '.gif')
+                        gif[0].save(os.path.join(output_path, gifname),
                                     save_all=True, append_images=gif[1:], duration=ms, loop=0)
-                        gifname = '.\\' + gifname
+                        gifname = './' + gifname
 
                     predict_file = f'%06.d' % file_index
-                    with open(output_path + '\\predicts\\' + predict_file + '.html', 'w') as p_file:
+                    with open(os.path.join(output_path, 'predicts', predict_file + '.html'), 'w') as p_file:
                         template('predict.img_list', p_file, path=input_imgs['path'], ghost=input_imgs['ghost'],
-                                 back_step=(back_step + "..\\"))
+                                 back_step=(back_step + '../'))
                     file_index += 1
                 elif grad_cam:
                     # What the Neural Network see - it is not supported for LSTM network
                     heat_map = visualize_cam(model, -1, decision, img)
-                    heat_file = back_step + 'focuses\\' + img_name
-                    cv2.imwrite(output_path + '\\focuses\\' + img_name, heat_map)
+                    heat_file = os.path.join(back_step, 'focuses', img_name)
+                    cv2.imwrite(os.path.join(output_path, 'focuses', img_name), heat_map)
                 # Saving images to the directory
 
                 template('evaluation.predict', html_file, predict_file=predict_file, output_vector=network_say,
@@ -455,7 +461,7 @@ def create_html(model, classes, input_path, output_path, portable=False, grad_ca
                 if num_frames == 1:
                     last_img_name = img_name
 
-        with open(output_path + '\\decisions.json', 'w') as json_file:
+        with open(os.path.join(output_path, 'decisions.json'), 'w') as json_file:
             decisions['class'] = np.array(decisions['class'], dtype='int8')
             decisions['time'] = np.array(decisions['time'], dtype='int64')
 
@@ -486,7 +492,7 @@ def create_html(model, classes, input_path, output_path, portable=False, grad_ca
         plt.xlabel('Time [min]')
         plt.legend(['Decision'], loc='upper left')
 
-        plt.savefig(output_path + '\\timeline.svg')
+        plt.savefig(os.path.join(output_path, 'timeline.svg'))
 
     if verbose:
         print('[I] The HTML file with predictions was successfully created.')
@@ -534,7 +540,7 @@ def create_tex_validation(matrix, class_names, output_path, normalize=True, labe
     if label is None:
         label = 'my_label'
 
-    with open(output_path + '\\confusion_matrix.tex', 'w') as tex_file:
+    with open(os.path.join(output_path, 'confusion_matrix.tex'), 'w') as tex_file:
         num_classes = len(class_names)
 
         tex_file.write(
@@ -588,7 +594,7 @@ def create_tex_validation(matrix, class_names, output_path, normalize=True, labe
         print('[I] The LaTeX Confusion table was successfully created.')
 
 
-def get_html_validation(matrix, class_names, normalize=True, spaces=''):
+def get_html_validation(matrix, class_names, normalize=True, spaces='', acc_loss=None):
     width = int(100 / (len(class_names) + 2))
     first_line = spaces + '        <td width="' + str(width) + '%"></td>\n'
 
@@ -597,22 +603,37 @@ def get_html_validation(matrix, class_names, normalize=True, spaces=''):
 
     table = ''
     mat_sum = 1
+    correct = 0
     for i, line in enumerate(matrix):
         table += spaces + '    <tr>\n'
         table += spaces + '        <td>' + class_names[i] + '</td>\n'
         if normalize is True:
             mat_sum = matrix[i].sum()
+            if mat_sum == 0:
+                # there is no data in the current row
+                mat_sum = 1
 
         den = matrix[i].max()
+        if den == 0:
+            # there is no data in the current row
+            den = 1
 
-        for val in line:
+        for j, val in enumerate(line):
+            correct += 0 if i != j else val
+
             color = int((1 - val / 2 / den) * 255)
             table += (
                     spaces + '        <td style="background:rgb' + str((color, color, color)) + '">' +
-                    str(f'%.3f' % (val / mat_sum)if normalize else int(val)) + '</td>\n'
+                    str(f'%.3f' % (val / mat_sum) if normalize else int(val)) + '</td>\n'
             )
 
         table += spaces + '    </tr>\n'
+
+    # link to acc and loss graphs
+    if acc_loss is not None:
+        fit_info = spaces + '    (<a href="%s">Accuracy</a>, <a href="%s">Loss</a>)\n' % (acc_loss[0], acc_loss[1])
+    else:
+        fit_info = ''
 
     return (
         spaces + '<table width="100%">\n' +
@@ -622,12 +643,17 @@ def get_html_validation(matrix, class_names, normalize=True, spaces=''):
         + first_line +
         spaces + '    </tr>\n'
         + table +
-        spaces + '</table>'
+        spaces + '</table>\n' +
+        spaces + '<br />\n' +
+        spaces + '<div>\n' +
+        spaces + '    Final accuracy: %.2f %%\n' % (correct / matrix.sum() * 100)
+        + fit_info +
+        spaces + '</div>\n'
     )
 
 
 def create_html_validation(model, classes, data, output_path, matrix_and_wrong_pred=None, grad_cam=False, gif_ms=100,
-                           verbose=True):
+                           acc_loss=None, verbose=True):
     if verbose:
         print('[I] Creating the HTML validation file.')
 
@@ -648,21 +674,28 @@ def create_html_validation(model, classes, data, output_path, matrix_and_wrong_p
 
     # LSTM Network - create directory for the html files with the images that were used to predict
     if num_frames > 1:
-        if not os.path.exists(output_path + '\\predicts'):
-            os.mkdir(output_path + '\\predicts')
-        if not os.path.exists(output_path + '\\gifs'):
-            os.mkdir(output_path + '\\gifs')
+        if not os.path.exists(os.path.join(output_path, 'predicts')):
+            os.mkdir(os.path.join(output_path, 'predicts'))
+        if not os.path.exists(os.path.join(output_path, 'gifs')):
+            os.mkdir(os.path.join(output_path, 'gifs'))
 
     # The images will be copied to the HTML file
-    if not os.path.exists(output_path + '\\imgs'):
-        os.mkdir(output_path + '\\imgs')
+    if not os.path.exists(os.path.join(output_path, 'imgs')):
+        os.mkdir(os.path.join(output_path, 'imgs'))
 
     # The output of Grad CAM
-    if grad_cam and not os.path.exists(output_path + '\\focuses'):
-        os.mkdir(output_path + '\\focuses')
+    if grad_cam and not os.path.exists(os.path.join(output_path, 'focuses')):
+        os.mkdir(os.path.join(output_path, 'focuses'))
 
     # Copy template and rename it
-    shutil.copy('..\\temp\\evaltemp.html', output_path + '\\evaluation.html')
+    shutil.copy(os.path.join(os.path.dirname(__file__), '..', EVALTEMP), os.path.join(output_path, 'evaluation.html'))
+
+    # copy acc and loss graphs
+    if acc_loss is not None:
+        shutil.copy(acc_loss[0], os.path.join(output_path, 'acc.svg'))
+        shutil.copy(acc_loss[1], os.path.join(output_path, 'loss.svg'))
+
+        acc_loss = ['./acc.svg', './loss.svg']  # store new paths
 
     # Compute the confusion matrix and save prediction of wrong classification
     if matrix_and_wrong_pred is None:
@@ -672,9 +705,10 @@ def create_html_validation(model, classes, data, output_path, matrix_and_wrong_p
         wrong_pred = matrix_and_wrong_pred[1]
 
     # Write the validation evaluation to the html file
-    with open(output_path + '\\evaluation.html', 'r+') as html_file:
+    with open(os.path.join(output_path, 'evaluation.html'), 'r+') as html_file:
         # Load the template and save it to the html file
-        template('evaluation.prepare_to_predict', html_file, classes=classes, validation=True, matrix=matrix)
+        template('evaluation.prepare_to_predict', html_file, classes=classes, validation=True, matrix=matrix,
+                 acc_loss=acc_loss)
 
         # Variables for LSTM
         predict_file = ''       # The name of the html file with all frames that were used to predict
@@ -694,29 +728,29 @@ def create_html_validation(model, classes, data, output_path, matrix_and_wrong_p
                 'len': 0
             }
 
-            if verbose and (time.time() - t_last) > 5:
+            if verbose and (time.time() - t_last) > PRINT_STATUS:
                 # how many images was done
                 print(f'[%3d %%] done' % (num_processed * 100 / num_total_imgs))
                 t_last = time.time()
 
             if num_frames > 1:
                 img_dir = f'%06.d' % num_processed
-                if not os.path.exists(output_path + '\\imgs\\' + img_dir):
-                    os.mkdir(output_path + '\\imgs\\' + img_dir)
+                if not os.path.exists(os.path.join(output_path, 'imgs', img_dir)):
+                    os.mkdir(os.path.join(output_path, 'imgs', img_dir))
 
                 for i in range(0, num_frames):
                     img = data[0][pos, i, ...]
                     img_name = f'%03.d.jpg' % i
-                    path_to_img = 'imgs\\' + img_dir + '\\' + img_name
-                    cv2.imwrite(output_path + '\\' + path_to_img, np.multiply(img, 255))
+                    path_to_img = os.path.join('imgs', img_dir, img_name)
+                    cv2.imwrite(os.path.join(output_path, path_to_img), np.multiply(img, 255))
 
                     input_imgs['path'].append(path_to_img)
                     input_imgs['len'] += 1
             else:
                 img = data[0][pos, ...]
                 img_name = f'%06.d.jpg' % num_processed
-                path_to_img = 'imgs\\' + img_name
-                cv2.imwrite(output_path + '\\' + path_to_img, np.multiply(img, 255))
+                path_to_img = os.path.join('imgs', img_name)
+                cv2.imwrite(os.path.join(output_path, path_to_img), np.multiply(img, 255))
 
                 input_imgs['path'].append(path_to_img)
                 input_imgs['len'] += 1
@@ -731,24 +765,25 @@ def create_html_validation(model, classes, data, output_path, matrix_and_wrong_p
                 # Create gif
                 gif = []
                 for i in input_imgs['path']:
-                    gif.append(Image.open(output_path + '\\' + i))
+                    gif.append(Image.open(os.path.join(output_path, i)))
 
-                gifname = 'gifs\\' + predict_file + '.gif'
-                gif[0].save(output_path + '\\' + gifname, save_all=True, append_images=gif[1:], duration=gif_ms, loop=0)
-                gifname = '.\\' + gifname
+                gifname = os.path.join('gifs', predict_file + '.gif')
+                gif[0].save(os.path.join(output_path, gifname), save_all=True, append_images=gif[1:], duration=gif_ms,
+                            loop=0)
+                gifname = './' + gifname
 
-                with open(output_path + '\\predicts\\' + predict_file + '.html', 'w') as p_file:
-                    template('predict.img_list', p_file, path=input_imgs['path'], back_step='.\\..\\')
+                with open(os.path.join(output_path, 'predicts', predict_file + '.html'), 'w') as p_file:
+                    template('predict.img_list', p_file, path=input_imgs['path'], back_step='./../')
             elif grad_cam:
                 # What the Neural Network see - it is not supported for LSTM network
                 heat_map = visualize_cam(model, -1, decision, img)
-                heat_file = 'focuses\\' + img_name
-                cv2.imwrite(output_path + '\\' + heat_file, heat_map)
-                heat_file = '.\\' + heat_file
+                heat_file = os.path.join('focuses', img_name)
+                cv2.imwrite(os.path.join(output_path, heat_file), heat_map)
+                heat_file = './' + heat_file
             # Saving images to the directory
 
             template('evaluation.predict', html_file, predict_file=predict_file, output_vector=prediction,
-                     true_label=data[1][pos], gif=gifname, classes=classes, view=('.\\' + input_imgs['path'][0]),
+                     true_label=data[1][pos], gif=gifname, classes=classes, view=('./' + input_imgs['path'][0]),
                      grad_cam=grad_cam, heat_file=heat_file)
 
     if verbose:

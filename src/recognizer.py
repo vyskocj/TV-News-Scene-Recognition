@@ -7,6 +7,7 @@ import keras
 from keras.applications.vgg16 import VGG16
 from keras.layers import LSTM, TimeDistributed
 from keras.layers import Dense, Dropout, Flatten
+from keras.models import Model
 
 from src.const_spec import *
 from src import evalgen
@@ -18,93 +19,53 @@ W_TRAIN_MODEL_WRONG_CLASS_NAMES = '[W] Check correctness of the class_names para
                                   ' train_model function.'
 
 
-def create_model(input_shape, num_classes, use_lstm=True, first_part_trainable=True, first_part_weights=None):
+def create_model(model_type):
     """
     Function to create Neural Network model for recognizing TV News scenes.
 
-    :param input_shape: Tuple in format (num_frames, frame_height, frame_width, frame_channels), where num_frames is set
-                        if and only if use_lstm is True.
-    :param num_classes: The number of classes to be classified by the Neural Network.
-    :param use_lstm: Optional, switch that adds the ability to use LSTM network.
-    :param first_part_trainable: Optional, by switching off is not the first part of model trainable. It can be used
-                                 if use_lstm is True.
-    :param first_part_weights: Optional, the file path of weights to already trained first part network, ie. network of
-                               this function with use_lstm=False and first_part_weights=None.
-    :return: The created model.
+    :param model_type: See const_spec class Architecture.
+    :return: created model, optimizer, epochs and batch size
     """
 
-    # define the number of neurons in the hidden layer of the first part model
-    if UNIT_TEST:
-        num_neurons_hid_layer_vgg16 = 1
+    # Model architecture
+    if model_type in Architecture.VGG16.FS.all:
+        model = VGG16(include_top=False, input_shape=INPUT_SHAPE)
+
+        x = model.layers[-1].output
+        x = keras.layers.Flatten()(x)
+
+        predictions = Dense(NUM_CLASSES, activation='softmax')(x)
+        model = Model(inputs=model.input, outputs=predictions)
+
+    elif model_type in Architecture.VGG16.FDS.all:
+        model = VGG16(include_top=False, input_shape=INPUT_SHAPE)
+
+        x = model.layers[-1].output
+        x = Flatten()(x)
+        x = Dense(512, activation='relu')(x)
+        x = Dropout(0.2)(x)
+
+        predictions = Dense(NUM_CLASSES, activation='softmax')(x)
+        model = Model(inputs=model.input, outputs=predictions)
     else:
-        num_neurons_hid_layer_vgg16 = 1400
+        raise Exception('[E] Required architecture does not exist!')
 
-    # create sequential model
-    model = keras.models.Sequential()
-
-    # ==================================================================================================================
-    # The first part of the Neural Network - VGG16
-    # ==================================================================================================================
-    # first is VGG16 without fully connected layers
-    if use_lstm:
-        model.add(
-            TimeDistributed(
-                VGG16(weights='imagenet', include_top=False),
-                input_shape=input_shape,
-                trainable=first_part_trainable
-            )
-        )
+    # Optimizer
+    if 'SGD' in model_type:
+        optimizer = keras.optimizers.SGD(lr=0.001, momentum=0.9, nesterov=True)
+    elif 'RMSprop' in model_type:
+        optimizer = keras.optimizers.RMSprop(lr=0.0001, rho=0.8)
     else:
-        model.add(
-            VGG16(weights='imagenet', include_top=False, input_shape=input_shape)
-        )
-    # endif use_lstm // VGG16 w/o fully connected layers
+        raise Exception('[E] Optimizer not found!')
 
-    # own fully connected layers
-    if use_lstm:
-        model.add(TimeDistributed(Flatten()))
+    # Number of epochs
+    epochs = 20
 
-        model.add(
-            TimeDistributed(
-                Dense(num_neurons_hid_layer_vgg16, activation='relu'),
-                trainable=first_part_trainable
-            )
-        )
-        model.add(TimeDistributed(Dropout(0.50)))
-
-        if first_part_weights is not None:
-            # complete the trained network structure to load weights
-            model.add(TimeDistributed(Dense(num_classes, activation='softmax')))
-            model.load_weights(first_part_weights)
-
-            # remove the last layer, ei. the classification layer
-            model.pop()
-
-    else:
-        model.add(Flatten())
-
-        model.add(Dense(num_neurons_hid_layer_vgg16, activation='relu'))
-        model.add(Dropout(0.50))
-
-        model.add(Dense(num_classes, activation='softmax'))
-
-        if first_part_weights is not None:
-            model.load_weights(first_part_weights)
-    # endif use_lstm // own fully connected layers
-
-    # ==================================================================================================================
-    # The second part of the Neural Network - LSTM
-    # ==================================================================================================================
-    if use_lstm:
-        model.add(LSTM(32, input_shape=(input_shape[0], num_neurons_hid_layer_vgg16)))
-        model.add(Dense(num_classes, activation='softmax'))
-    # endif use_lstm // the LSTM part of creating model
-
-    return model
+    return model, optimizer, BatchSize[model_type], epochs
 
 
-def train_model(model, train_data, test_data, epochs, batch_size, optimizer, output_path=None, class_names=None,
-                tex_label=None):
+def train_model(model, train_data, test_data, epochs, batch_size, optimizer, output_path, class_names=None,
+                tex_label=None, verbose=True):
     """
     Train model with the option to generate progress.
 
@@ -115,29 +76,35 @@ def train_model(model, train_data, test_data, epochs, batch_size, optimizer, out
     :param epochs: The number of epochs for the model to be trained.
     :param batch_size: The number of samples that will be propagated through the network.
     :param optimizer: Keras optimizer instance.
-    :param output_path: Optional, path where is generated training history and where is saved trained model.
+    :param output_path: Path where is generated training history and where is saved trained model.
     :param class_names: Optional, the classification class names / labels.
     :param tex_label: Optional, the label of Confusion matrix that is created for the LaTeX document.
+    :param verbose: Optional, display extended information.
 
     :return: History of training and output path.
     """
-    # set verbose depending on UNIT_TEST
-    if UNIT_TEST:
-        verbose = False
-    else:
-        verbose = True
-
     # set the output directory name
     if output_path is not None:
         if not os.path.exists(output_path):
-            print('[E] Output path is invalid!\n'
-                  '- You are currently: ' + os.path.abspath('.') + '\n'
-                  '- Your request was: ' + output_path + '\n')
-            return INVALID_OUTPUT_PATH
+            raise Exception('[E] Output path is invalid!\n'
+                            '- You are currently: ' + os.path.abspath('.') + '\n'
+                            '- Your request was: ' + output_path + '\n')
 
         output_dir = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
+
+        # making a new directory by the date time
+        output = output_path + ('\\' if output_path[-1] != '\\' else '') + output_dir + '\\'
+        os.mkdir(output)
+
+        with open(output + 'optimizer_config.txt', 'w') as f:
+            f.write(f'Epochs: %d\n' % epochs)
+            f.write(f'Optimizer: %s\n' % str(optimizer.__class__))
+            f.write(str(optimizer.get_config()))
+
+        with open(output + 'model_summary.txt', 'w') as f:
+            model.summary(print_fn=lambda x: f.write(x + '\n'), line_length=120)
     else:
-        output_dir = ''  # [W]: Local variable 'output_dir' might be referenced before assignment
+        output = ''  # [W]: Local variable 'output' might be referenced before assignment
     # if output_path is not None // set the output directory name
 
     # ==================================================================================================================
@@ -153,23 +120,14 @@ def train_model(model, train_data, test_data, epochs, batch_size, optimizer, out
     # ==================================================================================================================
     # generate an output if required
     if output_path is not None:
-        # making a new directory by the date time
-        output = output_path + ('\\' if output_path[-1] != '\\' else '') + output_dir + '\\'
-        os.mkdir(output)
-
         # define the class names if not passed
         if class_names is None:
             class_names = CLASS_NAMES
 
         # ==============================================================================================================
-        # Saving the model and optimizer information
+        # Saving the model
         # ==============================================================================================================
         model.save(output + 'model.h5')
-
-        with open(output + 'optimizer_config.txt', 'w') as f:
-            f.write(f'Epochs: %d\n' % epochs)
-            f.write(f'Optimizer: %s\n' % str(optimizer.__class__))
-            f.write(str(optimizer.get_config()))
 
         # preparing an Excel file for saving the training progress
         book = xlwt.Workbook(encoding='utf-8')
@@ -238,14 +196,9 @@ def train_model(model, train_data, test_data, epochs, batch_size, optimizer, out
             # creating the LaTeX table and validation HTML file
             evalgen.create_tex_validation(matrix, class_names, output, label=tex_label, verbose=verbose)
             evalgen.create_html_validation(model, class_names, test_data, output + 'HTML', grad_cam=grad_cam,
-                                           matrix_and_wrong_pred=(matrix, wrong_pred_vector), verbose=verbose)
+                                           matrix_and_wrong_pred=(matrix, wrong_pred_vector),
+                                           acc_loss=[output + 'acc.svg', output + 'loss.svg'], verbose=verbose)
         # endif len(class_names) != model.get_output_shape_at(-1)[1] // Creating the val HTML file and LaTeX table
-
-        # ==============================================================================================================
-        # Saving the model summary
-        # ==============================================================================================================
-        with open(output + 'model_summary.txt', 'w') as f:
-            model.summary(print_fn=lambda x: f.write(x + '\n'), line_length=120)
 
         if not UNIT_TEST:
             print('\n\n')

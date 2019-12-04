@@ -3,75 +3,122 @@ import random
 import cv2
 import os
 import glob
+import time
 
 from src.const_spec import *
 
 
-def create_dataset(train_data_paths, test_data_paths, output_filename, img_shape=None, shuffle=True, balance=None,
-                   divide_by_255=True, verbose=True):
+def create_dataset(output_filename, train=None, valid=None, test=None, img_shape=None,
+                   lstm=False, shuffle=True, balance=None, normalize=True, verbose=True):
     """
     Create a new dataset from directory files.
 
-    :param train_data_paths: List in format: [path_to_first_class_data, path_to_second_class_data, ...], where the paths
-                             are to the folders that the set of all training data are stored.
-    :param test_data_paths: Same as train_data_paths but the paths are to the testing data.
     :param output_filename: The name of output file.
+    :param train: List in format: [path_to_first_class_data, path_to_second_class_data, ...], where the paths
+                             are to the folders that the set of all training data are stored.
+    :param valid: Same as train but the paths are to the validation data.
+    :param test: Optional, same as train but the paths are to the testing data.
     :param img_shape: Optional, set the image size in the dataset.
+    :param lstm: Optional, the dataset is time-independent.
     :param shuffle: Optional, the training data should be shuffled before fitting the model.
     :param balance: Optional, for correct usage the training data should be in form: scene_frame.png.
-    :param divide_by_255: Optional, images are divided by 255 if True is given.
+    :param normalize: Optional, images are divided by 255 if True is given.
     :param verbose: Optional runtime printing.
-    :return: OK = 0
     """
 
     if verbose:
-        print("The dataset is being created: ")
+        print("[I] The dataset is being created")
 
     # Check if balance is defined
-    if balance is None:
-        balance = [False] * len(train_data_paths)
+    if balance is None and train is not None:
+        balance = [False] * len(train)
 
     # Get path of all images that have to be included to the dataset
-    train_imgs, train_labels, num_train_imgs = get_img_paths(train_data_paths, balance)
-    test_imgs, test_labels, num_test_imgs = get_img_paths(test_data_paths)
+    if train is not None:
+        train_imgs = [os.path.join(train, name) for name in os.listdir(train)]
+        train_imgs, train_labels, num_train_imgs = get_img_paths(train_imgs, balance, lstm=lstm)
+        num_labels = max(train_labels)
+    else:
+        train_imgs, train_labels, num_train_imgs, num_labels = None, None, None, 0  # Dummy variables
+
+    if valid is not None:
+        valid_imgs = [os.path.join(valid, name) for name in os.listdir(valid)]
+        valid_imgs, valid_labels, num_valid_imgs = get_img_paths(valid_imgs, lstm=lstm)
+        if num_labels == 0:
+            num_labels = max(valid_labels)
+    else:
+        valid_imgs, valid_labels, num_valid_imgs = None, None, None   # Dummy variables
+
+    if test is not None:
+        test_imgs = [os.path.join(test, name) for name in os.listdir(test)]
+        test_imgs, test_labels, num_test_imgs = get_img_paths(test_imgs, lstm=lstm)
+        if num_labels == 0:
+            num_labels = max(test_labels)
+    else:
+        test_imgs, test_labels, num_test_imgs = None, None, None   # Dummy variables
 
     # Check image shape: if img_shape is None, keep the original shape
     if img_shape is None:
-        img = cv2.imread(train_imgs[0])
-        img_shape = img.shape
+        if train is not None:
+            img = cv2.imread(train_imgs[0][0] if lstm else train_imgs[0])
+            img_shape = ((len(train_imgs[0]),) if lstm else ()) + img.shape
+        elif valid is not None:
+            img = cv2.imread(valid_imgs[0][0] if lstm else valid_imgs[0])
+            img_shape = ((len(valid_imgs[0]),) if lstm else ()) + img.shape
+        elif test is not None:
+            img = cv2.imread(test_imgs[0][0] if lstm else test_imgs[0])
+            img_shape = ((len(test_imgs[0]),) if lstm else ()) + img.shape
+        else:
+            raise Exception('[E] No data was passed to the function.')
 
     # The input data to the Neural Network should be randomly distributed
-    if shuffle is True:
+    if shuffle is True and train is not None:
         train_imgs, train_labels = shuffle_lists(train_imgs, train_labels)
 
     # Creating dataset with passed data
     with h5py.File(output_filename, 'w') as output_file:
+        dtype_img = 'float32' if normalize else 'uint8'
+        dtype_lbl = 'uint8' if num_labels < 255 else 'uint16'
+
         # Defining dataset for the input data
-        output_file.create_dataset(X_TRAIN, shape=(num_train_imgs,) + img_shape, dtype="float32")
-        output_file.create_dataset(X_TEST, shape=(num_test_imgs,) + img_shape, dtype="float32")
+        if train is not None:
+            output_file.create_dataset(X_TRAIN, shape=(num_train_imgs,) + img_shape, dtype=dtype_img)
+        if valid is not None:
+            output_file.create_dataset(X_VALID, shape=(num_valid_imgs,) + img_shape, dtype=dtype_img)
+        if test is not None:
+            output_file.create_dataset(X_TEST, shape=(num_test_imgs,) + img_shape, dtype=dtype_img)
 
         # Adding Neural Network output labels
-        output_file.create_dataset(Y_TRAIN, shape=(num_train_imgs,), data=train_labels, dtype="uint8")
-        output_file.create_dataset(Y_TEST, shape=(num_test_imgs,), data=test_labels, dtype="uint8")
+        if train is not None:
+            output_file.create_dataset(Y_TRAIN, shape=(num_train_imgs,), data=train_labels, dtype=dtype_lbl)
+        if valid is not None:
+            output_file.create_dataset(Y_VALID, shape=(num_valid_imgs,), data=valid_labels, dtype=dtype_lbl)
+        if test is not None:
+            output_file.create_dataset(Y_TEST, shape=(num_test_imgs,), data=test_labels, dtype=dtype_lbl)
 
         # Adding data to output_file
-        if verbose:
-            print("- Adding training data:")
-        add_imgs(train_imgs, output_file[X_TRAIN], img_shape, divide_by_255, verbose)
+        if train is not None:
+            if verbose:
+                print("- Training data:")
+            add_imgs(train_imgs, output_file[X_TRAIN], img_shape, normalize, verbose, lstm=lstm)
 
-        if verbose:
-            print("- Adding testing data:")
-        add_imgs(test_imgs, output_file[X_TEST], img_shape, divide_by_255, verbose)
+        if valid is not None:
+            if verbose:
+                print("- Validation data:")
+            add_imgs(valid_imgs, output_file[X_VALID], img_shape, normalize, verbose, lstm=lstm)
+
+        if test is not None:
+            if verbose:
+                print("- Testing data:")
+            add_imgs(test_imgs, output_file[X_TEST], img_shape, normalize, verbose, lstm=lstm)
     # endwith h5py.File(output_filename, 'w') as output_file // Creating dataset with passed data
 
     # Print that dataset was successfully created
     if verbose:
-        print("Dataset was successfully created.")
-
-    return OK
+        print("[I] Dataset was successfully created.")
 
 
-def shuffle_dataset(input_dataset, output_dataset, input_keys, output_keys=None, divide_by_255=True, verbose=True):
+def shuffle_dataset(input_dataset, output_dataset, input_keys, output_keys=None, normalize=True, verbose=True):
     """
     Create new dataset with shuffled data which can be used for fitting the Neural Network model.
 
@@ -81,7 +128,7 @@ def shuffle_dataset(input_dataset, output_dataset, input_keys, output_keys=None,
                        dataset has different key names, the correct format is: (pairs_1, pairs_2, ...)
                        where e.g. pairs_1 = ("train_data", "train_labels"), pairs_2 = ("input", "output"), ...
     :param output_keys: Optional when only one dataset is given. It defines pairs for the new dataset.
-    :param divide_by_255: Optional, frames are divided by 255 if True is given.
+    :param normalize: Optional, frames are divided by 255 if True is given.
     :param verbose: Optional runtime printing.
     :return: If success: OK = 0, if fail: INVALID_INPUT_PARAMETER = -2
     """
@@ -154,7 +201,7 @@ def shuffle_dataset(input_dataset, output_dataset, input_keys, output_keys=None,
 
                             for l in range(0, num_frames):
                                 new_dataset[output_keys[d][j_data]][k, l, ...] = \
-                                    old_dataset[input_keys[d][i][j_data]][s, l, ...] / (255.0 if divide_by_255 else 1.0)
+                                    old_dataset[input_keys[d][i][j_data]][s, l, ...] / (255.0 if normalize else 1.0)
                             # endfor l in range(0, num_frames)
 
                             labels.append(old_dataset[input_keys[d][i][j_lbls]][s, ...])
@@ -167,8 +214,8 @@ def shuffle_dataset(input_dataset, output_dataset, input_keys, output_keys=None,
                             if k % 50 == 0 and verbose:
                                 print(" [" + str(k) + "/" + str(num_data) + "] set")
 
-                            new_dataset[output_keys[d][j_data]][k, l, ...] = \
-                                old_dataset[input_keys[d][i][j_data]][s, ...] / (255.0 if divide_by_255 else 1.0)
+                            new_dataset[output_keys[d][j_data]][k, ...] = \
+                                old_dataset[input_keys[d][i][j_data]][s, ...] / (255.0 if normalize else 1.0)
 
                             labels.append(old_dataset[input_keys[d][i][j_lbls]][s, ...])
                         # endfor k, s in enumerate(shuffle_list) // save data to the new dataset file
@@ -181,10 +228,8 @@ def shuffle_dataset(input_dataset, output_dataset, input_keys, output_keys=None,
         # endfor d, dataset in enumerate(input_dataset) // for each required dataset
     # endwith h5py.File(output_dataset, 'w') as new_dataset // create a new dataset
 
-    return OK
 
-
-def get_img_paths(data, balance=None):
+def get_img_paths(data, balance=None, lstm=False):
     data_paths = list()   # list for all images
     data_labels = list()  # list of all classifications
 
@@ -218,15 +263,23 @@ def get_img_paths(data, balance=None):
             size = len(img_paths)
         else:
             # get list of paths and count them
-            img_paths = glob.glob(os.path.join(path, "*"))
-            size = len(img_paths)
+            paths = glob.glob(os.path.join(path, "*"))
+            size = len(paths)
+            if paths is []:
+                continue
+
+            if lstm:
+                img_paths = list()
+                for img_path in paths:
+                    img_paths.append(glob.glob(os.path.join(img_path, "*")))
+            else:
+                img_paths = paths
         # endif balance is not None and balance[index] is True // balance images if required
 
         # merge lists
         data_paths += img_paths
         data_labels += [index] * size
     # endfor index, path in enumerate(data) // Assumption that directories are given
-
     return data_paths, data_labels, len(data_paths)
 
 
@@ -244,28 +297,45 @@ def shuffle_lists(list1, list2):
     return list1, list2
 
 
-def add_imgs(data, output, shape, divide_by_255=True, verbose=True):
+def add_imgs(data, output, shape, normalize=True, verbose=True, lstm=False):
 
     num_data = len(data)
+    t_last = time.time()
 
     # read all image paths
     for index, path in enumerate(data):
-        # The status is printed every 50 saved images
-        if verbose and index % 50 == 0:
-            print(" [" + str(index) + "/" + str(num_data) + "] image")
+        # Print the status
+        if verbose and (time.time() - t_last) > PRINT_STATUS:
+            # how many images was done
+            print(f'[%6d/%6d] done' % (index, num_data))
+            t_last = time.time()
 
-        # Load image and reshape it
-        img = cv2.imread(path)
-        img = cv2.resize(img, (shape[1], shape[0]), interpolation=cv2.INTER_CUBIC)
+        if lstm:
+            for j, img_path in enumerate(path):
+                # Check if the shape is correct
+                if j >= shape[0]:
+                    break
 
-        # Add image into output_file
-        output[index, ...] = img
+                # Load image and reshape it
+                img = cv2.imread(img_path)
+                img = cv2.resize(img, (shape[2], shape[1]), interpolation=cv2.INTER_CUBIC)
 
-        # Transform image between [0, 1]
-        if divide_by_255:
-            output[index, ...] /= 255.0
+                # Add image into output_file
+                output[index, j, ...] = img
+
+                # Transform image between [0, 1]
+                if normalize:
+                    output[index, j, ...] /= 255.0
+
+        else:
+            # Load image and reshape it
+            img = cv2.imread(path)
+            img = cv2.resize(img, (shape[1], shape[0]), interpolation=cv2.INTER_CUBIC)
+
+            # Add image into output_file
+            output[index, ...] = img
+
+            # Transform image between [0, 1]
+            if normalize:
+                output[index, ...] /= 255.0
     # endfor index, path in enumerate(data) // read all image paths
-
-
-# TODO: přehodit do mainu
-# shuffle_dataset(('..\\data\\dataset_lstm\\scene_recog_test.h5', '..\\data\\dataset_lstm\\scene_recog_train.h5'), '..\\data\\dataset_lstm\\scene_recog.h5', ('labels', 'data'), [('test_labels', 'test_data'), ('train_labels', 'train_data')])
