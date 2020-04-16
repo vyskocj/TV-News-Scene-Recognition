@@ -5,9 +5,16 @@ from datetime import datetime
 
 import keras
 from keras.applications.vgg16 import VGG16
+from keras.applications.resnet_v2 import ResNet152V2, ResNet50V2
+from keras.applications.inception_resnet_v2 import InceptionResNetV2
+from keras.applications.inception_v3 import InceptionV3
+from keras.applications.mobilenet_v2 import MobileNetV2
 from keras.layers import LSTM, TimeDistributed
-from keras.layers import Dense, Dropout, Flatten
-from keras.models import Model
+from keras.layers import Dense, Dropout, Activation, Flatten, GlobalAveragePooling2D, GlobalMaxPooling2D
+from keras.models import Model, Sequential
+
+from keras.backend import sigmoid
+from keras.utils.generic_utils import get_custom_objects
 
 from src.const_spec import *
 from src import evalgen
@@ -19,49 +26,161 @@ W_TRAIN_MODEL_WRONG_CLASS_NAMES = '[W] Check correctness of the class_names para
                                   ' train_model function.'
 
 
-def create_model(model_type):
+class Swish(Activation):
+    def __init__(self, activation, **kwargs):
+        super(Swish, self).__init__(activation, **kwargs)
+        self.__name__ = 'swish'
+
+
+def swish(x, beta=1):
+    return x * sigmoid(beta * x)
+
+
+def create_model(model_type, weights=None):
     """
     Function to create Neural Network model for recognizing TV News scenes.
 
     :param model_type: See const_spec class Architecture.
-    :return: created model, optimizer, epochs and batch size
+    :param weights: Path to the model, which weights will be used.
+    :return: created model, optimizer, batch size and epochs
     """
 
     # Model architecture
-    if model_type in Architecture.VGG16.FS.all:
+    if model_type in Architecture.VGG16.all:
         model = VGG16(include_top=False, input_shape=INPUT_SHAPE)
 
+    elif model_type in Architecture.InceptionResNetV2.all:
+        model = InceptionResNetV2(include_top=False, input_shape=INPUT_SHAPE,
+                                  weights=('imagenet' if weights is None else None))
+
+    elif model_type in Architecture.InceptionV3.all:
+        model = InceptionV3(include_top=False, input_shape=INPUT_SHAPE)
+
+    elif model_type in Architecture.MobileNetV2.all:
+        model = MobileNetV2(include_top=False, input_shape=INPUT_SHAPE)
+
+    else:
+        raise Exception('[E] Required architecture does not exist!')
+
+    # Name of the model
+    model.name = model_type
+
+    # Stacking top layers
+    if '_LSTM' in model_type:
+        lstm = Sequential()
+        lstm.add(TimeDistributed(model, input_shape=INPUT_SHAPE_TD))
+
+        if '_FS_' in model_type or '_FDS_' in model_type:
+            lstm.add(TimeDistributed(Flatten()))
+        elif '_MS_' in model_type or '_MDS_' in model_type:
+            lstm.add(TimeDistributed(GlobalMaxPooling2D()))
+
+        elif '_AS_' in model_type or '_ADS_' in model_type:
+            lstm.add(TimeDistributed(GlobalAveragePooling2D()))
+        else:
+            raise Exception('[E] Top layers does not exists: %s' % model_type)
+
+        if '_FDS_' in model_type or '_MDS_' in model_type or '_ADS_' in model_type:
+            lstm.add(TimeDistributed(Dense(1792, activation='relu')))
+            lstm.add(TimeDistributed(Dropout(0.2)))
+
+        if weights is not None:
+            # store weights into a new model (must be made like this)
+            model_weights = keras.models.load_model(weights)
+            model_weights.layers.pop()
+
+            model.set_weights(model_weights.get_weights())
+            for layer in model.layers:
+                layer.trainable = False
+
+        if '_LSTM16_' in model_type:
+            lstm.add(LSTM(16))
+        elif '_LSTM64_' in model_type:
+            lstm.add(LSTM(64))
+        elif '_LSTM128_' in model_type:
+            lstm.add(LSTM(128))
+        else:
+            lstm.add(LSTM(32))
+
+        lstm.add(Dense(NUM_CLASSES, activation='softmax'))
+
+        model = lstm
+    elif '_FS_' in model_type:
         x = model.layers[-1].output
-        x = keras.layers.Flatten()(x)
+        x = Flatten()(x)
 
         predictions = Dense(NUM_CLASSES, activation='softmax')(x)
         model = Model(inputs=model.input, outputs=predictions)
 
-    elif model_type in Architecture.VGG16.FDS.all:
-        model = VGG16(include_top=False, input_shape=INPUT_SHAPE)
-
+    elif '_FDS_' in model_type:
         x = model.layers[-1].output
         x = Flatten()(x)
-        x = Dense(512, activation='relu')(x)
+        x = Dense(1792, activation='relu')(x)
         x = Dropout(0.2)(x)
 
         predictions = Dense(NUM_CLASSES, activation='softmax')(x)
         model = Model(inputs=model.input, outputs=predictions)
+
+    elif '_AS_' in model_type:
+        x = model.layers[-1].output
+        x = GlobalAveragePooling2D()(x)
+
+        predictions = Dense(NUM_CLASSES, activation='softmax')(x)
+        model = Model(inputs=model.input, outputs=predictions)
+
+    elif '_ADS_' in model_type:
+        x = model.layers[-1].output
+        x = GlobalAveragePooling2D()(x)
+        x = Dense(1792, activation='relu')(x)
+        x = Dropout(0.2)(x)
+
+        predictions = Dense(NUM_CLASSES, activation='softmax')(x)
+        model = Model(inputs=model.input, outputs=predictions)
+
+    elif '_MS_' in model_type:
+        x = model.layers[-1].output
+        x = GlobalMaxPooling2D()(x)
+
+        predictions = Dense(NUM_CLASSES, activation='softmax')(x)
+        model = Model(inputs=model.input, outputs=predictions)
+
+    elif '_MDS_' in model_type:
+        x = model.layers[-1].output
+        x = GlobalMaxPooling2D()(x)
+        x = Dense(1792, activation='relu')(x)
+        x = Dropout(0.2)(x)
+
+        predictions = Dense(NUM_CLASSES, activation='softmax')(x)
+        model = Model(inputs=model.input, outputs=predictions)
+
     else:
-        raise Exception('[E] Required architecture does not exist!')
+        raise Exception('[E] Top layers does not exists: %s' % model_type)
 
     # Optimizer
-    if 'SGD' in model_type:
+    if 'LSTM' in model_type:
+        if 'Adam' in model_type:
+            optimizer = keras.optimizers.Adam(lr=0.0001, beta_1=0.9, beta_2=0.999, amsgrad=False)
+        elif 'AMSGrad' in model_type:
+            optimizer = keras.optimizers.Adam(lr=0.0001, beta_1=0.9, beta_2=0.999, amsgrad=True)
+        elif 'SGD' in model_type:
+            optimizer = keras.optimizers.SGD(lr=0.001, momentum=0.9, nesterov=True)
+        elif 'RMSprop' in model_type:
+            optimizer = keras.optimizers.RMSprop(lr=0.00001, rho=0.9)
+        else:
+            raise Exception('[E] Optimizer not found!')
+    # not time-distributed model
+    elif 'Adam' in model_type:
+        optimizer = keras.optimizers.Adam(lr=0.000001, beta_1=0.9, beta_2=0.999, amsgrad=False)
+    elif 'AMSGrad' in model_type:
+        optimizer = keras.optimizers.Adam(lr=0.000001, beta_1=0.9, beta_2=0.999, amsgrad=True)
+    elif 'SGD' in model_type:
         optimizer = keras.optimizers.SGD(lr=0.001, momentum=0.9, nesterov=True)
     elif 'RMSprop' in model_type:
-        optimizer = keras.optimizers.RMSprop(lr=0.0001, rho=0.8)
+        optimizer = keras.optimizers.RMSprop(lr=0.00025, rho=0.9)
     else:
         raise Exception('[E] Optimizer not found!')
 
-    # Number of epochs
-    epochs = 20
-
-    return model, optimizer, BatchSize[model_type], epochs
+    return model, optimizer, BatchSize[model_type], EPOCHS
 
 
 def train_model(model, train_data, test_data, epochs, batch_size, optimizer, output_path, class_names=None,
@@ -133,7 +252,7 @@ def train_model(model, train_data, test_data, epochs, batch_size, optimizer, out
         book = xlwt.Workbook(encoding='utf-8')
 
         # saving the output to the new directory
-        for cat in ['acc', 'loss']:
+        for cat in ['accuracy', 'loss']:
             # ==========================================================================================================
             # Plotting the graphs
             # ==========================================================================================================
@@ -161,8 +280,8 @@ def train_model(model, train_data, test_data, epochs, batch_size, optimizer, out
             # saving the training history
             for e in range(1, epochs + 1):
                 sheet.write(e, 0, e - 1)
-                sheet.write(e, 1, history.history[cat][e - 1])
-                sheet.write(e, 2, history.history['val_' + cat][e - 1])
+                sheet.write(e, 1, float(history.history[cat][e - 1]))
+                sheet.write(e, 2, float(history.history['val_' + cat][e - 1]))
             # endfor e in range(1, epochs + 1) // saving the training history
         # endfor type in ['acc', 'loss'] // saving the output to the new directory
 
@@ -197,7 +316,7 @@ def train_model(model, train_data, test_data, epochs, batch_size, optimizer, out
             evalgen.create_tex_validation(matrix, class_names, output, label=tex_label, verbose=verbose)
             evalgen.create_html_validation(model, class_names, test_data, output + 'HTML', grad_cam=grad_cam,
                                            matrix_and_wrong_pred=(matrix, wrong_pred_vector),
-                                           acc_loss=[output + 'acc.svg', output + 'loss.svg'], verbose=verbose)
+                                           acc_loss=[output + 'accuracy.svg', output + 'loss.svg'], verbose=verbose)
         # endif len(class_names) != model.get_output_shape_at(-1)[1] // Creating the val HTML file and LaTeX table
 
         if not UNIT_TEST:
@@ -206,3 +325,7 @@ def train_model(model, train_data, test_data, epochs, batch_size, optimizer, out
     # endif output_path is not None // generate the output if required
 
     return history
+
+
+# Update activation functions
+get_custom_objects().update({'swish': Swish(swish)})

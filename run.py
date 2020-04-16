@@ -35,37 +35,39 @@ if __name__ == '__main__':
     parser.add_argument('-ow', '--overwrite', action='store_true', help='Overwrite files in the output directory')
     parser.add_argument('-v', '--verbose', action='store_true', help='Display extended information')
 
-    parser.add_argument('-m', '--model_type', help='Create new model (see const_spec file - class Architecture). '
-                                                   'Or when argument -l is used, this is the label for LaTeX file.')
-    parser.add_argument('-l', '--load_model', help='Load the model which will be used for evaluation')
+    parser.add_argument('-m', '--model_type', help='Create new model (see const_spec file - class Architecture).')
+    parser.add_argument('-l', '--load_model', help='Load the model which will be used for evaluation.')
+    parser.add_argument('-w', '--load_weights', help='Load weights of the model to train LSTM network. This parameter '
+                                                     'is not allowed when -l argument is passed!')
 
-    parser.add_argument('-F', '--fit', action='store_true', help='Model fitting (see X/Y_TRAIN and X/Y_VALID constants '
+    parser.add_argument('-F', '--fit', action='store_true', help='Train a model (see X/Y_TRAIN and X/Y_VALID constants '
                                                                  'in const_spec file for required keywords in the '
-                                                                 'dataset file). Argument -gc can be used for time '
-                                                                 'independent network. Confusion matrix and HTML file'
-                                                                 'with predictions on validation data is automatically '
-                                                                 'generated too')
-    parser.add_argument('-V', '--valid', action='store_true', help='Generate Confusion matrix and HTML file with '
+                                                                 'dataset file). Argument -gc can be used for a time-'
+                                                                 'independent network. A confusion matrix and an HTML '
+                                                                 'file with predictions on validation data is '
+                                                                 'automatically generated also')
+    parser.add_argument('-V', '--valid', action='store_true', help='Generate a Confusion matrix and an HTML file with '
                                                                    'predictions (see X/Y_VALID constant in const_spec '
-                                                                   'file). Argument -gc can be used for time '
+                                                                   'file). Argument -gc can be used for a time-'
                                                                    'independent network')
-    parser.add_argument('-T', '--test', action='store_true', help='Generate Confusion matrix and HTML file with '
+    parser.add_argument('-T', '--test', action='store_true', help='Generate a confusion matrix and an HTML file with '
                                                                   'predictions (see X/Y_TEST constant in const_spec '
-                                                                  'file). Argument -gc can be used for time '
+                                                                  'file). Argument -gc can be used for a time-'
                                                                   'independent network')
-    parser.add_argument('-P', '--predict', action='store_true', help='Generate HTML file with the predictions. '
-                                                                     'Argument -gc can be used for time independent '
+    parser.add_argument('-P', '--predict', action='store_true', help='Generate an HTML file with the predictions. '
+                                                                     'Argument -gc can be used for a time-independent '
                                                                      'network')
     parser.add_argument('-gc', '--gradCAM', action='store_true', help='Use the GradCAM for the evaluation '
-                                                                      '(significantly slows down the program) - it is '
-                                                                      'supported only for time independent networks!')
+                                                                      '(significantly slows down the program) - this '
+                                                                      'feature is supported only for time independent '
+                                                                      'networks!')
     # Positional arguments
-    parser.add_argument('dataset', nargs='+', help='Path to the dataset. The dataset must be in h5 file for these '
+    parser.add_argument('dataset', nargs='+', help='Path to the dataset. The dataset must be a h5 file for these '
                                                    'arguments: -F, -V, -T; The path must lead to a directory '
-                                                   'containing images if argument -P is passed. If there is request '
+                                                   'containing images if argument -P is passed. If there is a request '
                                                    'to create a new dataset, three paths are expected in following '
-                                                   'order: <train data> <validation data> <test data>; the path is '
-                                                   'None if it is not to be passed')
+                                                   'order: <train data> <validation data> <test data>; None shall be '
+                                                   'passed if any set should be skipped.')
     parser.add_argument('output', help='Output file for creating dataset, output directory otherwise.')
 
     # Parsing arguments
@@ -87,6 +89,9 @@ if __name__ == '__main__':
             print(f'Loaded model:\t\t%s' % os.path.abspath(args.load_model))
         elif args.model_type is not None:
             print(f'Used model:\t\t%s' % args.model_type)
+
+        if args.load_weights is not None:
+            print(f'Loaded weights:\t\t%s' % os.path.abspath(args.load_weights))
 
         print(f'Used dataset:\t\t%s' % os.path.abspath(args.dataset[0]))
         print('The following actions will be performed: ')
@@ -138,19 +143,6 @@ if __name__ == '__main__':
                 os.mkdir(path)
             # when recognizer.train_model() is called, new directory with the date is made => nothing can be overwritten
             evaluation_dir['fit'] = args.model_type
-        elif args.valid is True and args.fit is False:
-            path = os.path.join(args.output, evaluation_dir['valid'])
-            if not os.path.exists(path):
-                os.mkdir(path)
-            elif os.listdir(path) != [] and args.overwrite is False:
-                raise Exception(f'[E] "{path}" is not empty!')
-
-        if args.test is True:
-            path = os.path.join(args.output, evaluation_dir['test'])
-            if not os.path.exists(path):
-                os.mkdir(path)
-            elif os.listdir(path) != [] and args.overwrite is False:
-                raise Exception(f'[E] "{path}" is not empty!')
 
         if args.predict is True:
             path = os.path.join(args.output, evaluation_dir['predict'])
@@ -167,6 +159,8 @@ if __name__ == '__main__':
                 raise Exception('[E] This script does not support training of the loaded model!')
         elif args.load_model is None and args.model_type is None:
             raise Exception('[E] Model not selected!')
+        elif args.load_weights is not None and args.model_type is None:
+            raise Exception('[E] You must select LSTM model (see -m argument) if you want to load weights!!')
     else:
         # Creating dataset
         # output argument
@@ -193,17 +187,17 @@ if __name__ == '__main__':
             if args.model_type is not None:
                 label = args.model_type
             else:
-                label = 'my_label'
+                label = model.name
 
             optimizer, batch_size, epochs = None, None, None
         else:
-            model, optimizer, batch_size, epochs = rc.create_model(args.model_type)
+            model, optimizer, batch_size, epochs = rc.create_model(args.model_type, args.load_weights)
             label = args.model_type
 
         # fit, valid and test arguments
         if args.fit is True or args.valid is True or args.test is True:
             with h5py.File(args.dataset[0], 'r') as dataset:
-                # fit or valid argument
+                # fit argument
                 if args.fit is True and optimizer is not None:
                     x_train = dataset[X_TRAIN]
                     y_train = keras.utils.to_categorical(dataset[Y_TRAIN], NUM_CLASSES)
@@ -214,7 +208,21 @@ if __name__ == '__main__':
                     rc.train_model(model, (x_train, y_train), (x_valid, y_valid), epochs, batch_size, optimizer,
                                    output_path=os.path.join(args.output, evaluation_dir['fit']), tex_label=label,
                                    verbose=args.verbose)
+
+                # valid argument - (evaluation file is created by fitting the model for given validation dataset)
                 elif args.valid is True:
+                    # set the output path
+                    path = os.path.join(args.output, model.name)
+                    if not os.path.exists(path):
+                        os.mkdir(path)
+
+                    path = os.path.join(path, evaluation_dir['valid'])
+                    if not os.path.exists(path):
+                        os.mkdir(path)
+                    elif os.listdir(path) != [] and args.overwrite is False:
+                        raise Exception(f'[E] "{path}" is not empty!')
+
+                    # create the evaluation file
                     x_valid = dataset[X_VALID]
                     y_valid = keras.utils.to_categorical(dataset[Y_VALID], NUM_CLASSES)
 
@@ -224,10 +232,22 @@ if __name__ == '__main__':
                                              label=label, verbose=args.verbose)
                     eg.create_html_validation(model, CLASS_NAMES, (x_valid, y_valid),
                                               os.path.join(args.output, evaluation_dir['valid']), grad_cam=args.gradCAM,
-                                              verbose=args.verbose)
+                                              matrix_and_wrong_pred=(matrix, wrong_pred_vector), verbose=args.verbose)
 
-                # test
+                # test argument
                 if args.test is True:
+                    # set the output path
+                    path = os.path.join(args.output, model.name)
+                    if not os.path.exists(path):
+                        os.mkdir(path)
+
+                    path = os.path.join(path, evaluation_dir['test'])
+                    if not os.path.exists(path):
+                        os.mkdir(path)
+                    elif os.listdir(path) != [] and args.overwrite is False:
+                        raise Exception(f'[E] "{path}" is not empty!')
+
+                    # create the evaluation file
                     x_test = dataset[X_TEST]
                     y_test = keras.utils.to_categorical(dataset[Y_TEST], NUM_CLASSES)
 
@@ -237,10 +257,10 @@ if __name__ == '__main__':
                                              label=label, verbose=args.verbose)
                     eg.create_html_validation(model, CLASS_NAMES, (x_test, y_test),
                                               os.path.join(args.output, evaluation_dir['test']), grad_cam=args.gradCAM,
-                                              verbose=args.verbose)
+                                              matrix_and_wrong_pred=(matrix, wrong_pred_vector), verbose=args.verbose)
 
         # predict argument
-        if args.predict is True:
+        elif args.predict is True:
             eg.create_html(model, CLASS_NAMES, args.dataset[0], os.path.join(args.output, evaluation_dir['predict']),
                            portable=True, grad_cam=args.gradCAM, verbose=args.verbose)
     else:
@@ -253,8 +273,10 @@ if __name__ == '__main__':
 
         if os.path.isdir(os.path.join(existing_path, os.listdir(existing_path)[0])):
             img_shape = INPUT_SHAPE_TD
+            lstm = True
         else:
             img_shape = INPUT_SHAPE
+            lstm = False
 
         ic.create_dataset(args.output, train=args.dataset[0], valid=args.dataset[1], test=args.dataset[2],
-                          img_shape=img_shape, verbose=args.verbose)
+                          img_shape=img_shape, lstm=lstm, verbose=args.verbose)

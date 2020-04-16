@@ -4,6 +4,7 @@ import cv2
 import os
 import glob
 import time
+import numpy as np
 
 from src.const_spec import *
 
@@ -13,11 +14,10 @@ def create_dataset(output_filename, train=None, valid=None, test=None, img_shape
     """
     Create a new dataset from directory files.
 
-    :param output_filename: The name of output file.
-    :param train: List in format: [path_to_first_class_data, path_to_second_class_data, ...], where the paths
-                             are to the folders that the set of all training data are stored.
-    :param valid: Same as train but the paths are to the validation data.
-    :param test: Optional, same as train but the paths are to the testing data.
+    :param output_filename: Name of the output file.
+    :param train: Path to the training data.
+    :param valid: Path to the validation data.
+    :param test: Path to the testing data.
     :param img_shape: Optional, set the image size in the dataset.
     :param lstm: Optional, the dataset is time-independent.
     :param shuffle: Optional, the training data should be shuffled before fitting the model.
@@ -77,7 +77,7 @@ def create_dataset(output_filename, train=None, valid=None, test=None, img_shape
 
     # Creating dataset with passed data
     with h5py.File(output_filename, 'w') as output_file:
-        dtype_img = 'float32' if normalize else 'uint8'
+        dtype_img = 'float16' if normalize else 'uint8'
         dtype_lbl = 'uint8' if num_labels < 255 else 'uint16'
 
         # Defining dataset for the input data
@@ -305,7 +305,7 @@ def add_imgs(data, output, shape, normalize=True, verbose=True, lstm=False):
     # read all image paths
     for index, path in enumerate(data):
         # Print the status
-        if verbose and (time.time() - t_last) > PRINT_STATUS:
+        if verbose and (((time.time() - t_last) > PRINT_STATUS) or (index == 0)):
             # how many images was done
             print(f'[%6d/%6d] done' % (index, num_data))
             t_last = time.time()
@@ -339,3 +339,17 @@ def add_imgs(data, output, shape, normalize=True, verbose=True, lstm=False):
             if normalize:
                 output[index, ...] /= 255.0
     # endfor index, path in enumerate(data) // read all image paths
+
+
+def unpack_dataset(input_dataset, output_dir, class_names):
+    with h5py.File(input_dataset, 'r') as dataset:
+        for i in range(0, len(class_names)):
+            dir = output_dir + class_names[dataset[Y_TRAIN][i]]
+            os.mkdir(dir)
+
+        shape = dataset[X_TRAIN].shape
+        for i in range(0, shape[0]):
+            dir = output_dir + '\\%s\\%d' % (CLASS_NAMES_SH[dataset[Y_TRAIN][i, 0]], i)
+            os.mkdir(dir)
+            for j in range(0, shape[1]):
+                cv2.imwrite(dir + '\\%d.jpg' % j, np.multiply(dataset[X_TRAIN][i, j, ...], 255))

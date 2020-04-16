@@ -14,6 +14,8 @@ from src.const_spec import *
 
 E_TEMPLATE_CLASSES = '[E] Pass the parameter to the template function: ' \
                      '"classes" - a list of neural network output names.'
+E_TEMPLATE_MODELS = '[E] Pass the parameter to the template function: ' \
+                     '"models" - a list of neural network models.'
 E_TEMPLATE_VIEW = '[E] Pass the parameter to the template function: ' \
                   '"view" - path to the image / gif that represents prediction.'
 E_TEMPLATE_OUTPUT_VECTOR = '[E] Pass the parameter to the template function: ' \
@@ -68,10 +70,35 @@ def template(part, file, **kwargs):
             nav_bar += '        <a href="javascript:void(0)" id="%s" onclick="showById(\'%s\')">%s</a>\n' % (c, c, c)
             class_table += (f'            <th style="width:%.2f%%">' % width) + c + '</th>\n'
 
-        replace(string=nav_bar[8:-1], old_tag='nav_bar', file=file)             # 8  -> number of spaces, -1 -> '\n'
+        replace(string=nav_bar[8:-1], old_tag='nav_bar', file=file)
         replace(string=summary, old_tag='summary', file=file)
-        replace(string=class_table[12:-1], old_tag='class_table', file=file)    # 12 -> number of spaces, -1 -> '\n'
-        replace(string=true_label, old_tag='true_label', file=file)
+        replace(string=class_table[12:-1], old_tag='evaluation_classesOrModels', file=file)
+        replace(string=true_label, old_tag='evaluation_trueLabel', file=file)
+        replace(string='', old_tag='evaluation_predict', file=file)
+
+    elif part == 'evaluation.prepare_to_compare':
+        if 'classes' not in kwargs.keys():
+            raise Exception(E_TEMPLATE_CLASSES)
+        elif 'models' not in kwargs.keys():
+            raise Exception(E_TEMPLATE_MODELS)
+
+        true_label = ''
+        summary = ''
+
+        replace(string=str(kwargs['classes']), old_tag='classArray', file=file)
+
+        nav_bar = ''
+        for c in kwargs['classes']:
+            nav_bar += '        <a href="javascript:void(0)" id="%s" onclick="showById(\'%s\')">%s</a>\n' % (c, c, c)
+
+        model_table = ''
+        for m in kwargs['models']:
+            model_table += f'            <th>' + m.name + '</th>\n'
+
+        replace(string=nav_bar[8:-1], old_tag='nav_bar', file=file)
+        replace(string=summary, old_tag='summary', file=file)
+        replace(string=model_table[12:-1], old_tag='evaluation_classesOrModels', file=file)
+        replace(string=true_label, old_tag='evaluation_trueLabel', file=file)
         replace(string='', old_tag='evaluation_predict', file=file)
 
     elif part == 'evaluation.predict':
@@ -129,6 +156,27 @@ def template(part, file, **kwargs):
             + output_vector +
             '            <td title="Predicted">' + kwargs['classes'][np.argmax(kwargs['output_vector'])] + '</td>\n'
             + true_label +
+            '        </tr>\n'
+        )
+
+        insert(string, file)
+
+    elif part == 'evaluation.compare':
+        output_heat_files = ''
+        for i, heat_file in enumerate(kwargs['heat_files']):
+            output_heat_files += '            <td title="' + kwargs['models'][i].name + '">\n' + \
+                                 '                <img src="' + kwargs['heat_files'][i] + '" />\n' + \
+                                 '                <br />\n' + \
+                                 '                ' + kwargs['classes'][kwargs['predicted_class'][i]] + '\n' + \
+                                 '            </td>\n'
+
+        string = (
+            '        <tr class="' + kwargs['classes'][kwargs['true_class']] + '">\n'
+            '            <td class="td-img">\n'
+            '                <img src="' + kwargs['view'] + '" />\n'
+            '            </td>\n'
+            + output_heat_files +
+            '            <td title="Predicted">' + kwargs['classes'][kwargs['true_class']] + '</td>\n'
             '        </tr>\n'
         )
 
@@ -222,6 +270,21 @@ def replace(string, old_tag, file):
 
 def create_html(model, classes, input_path, output_path, portable=True, grad_cam=False, adaptive_strides=True,
                 verbose=True):
+    """
+    Generation of prediction file for a neural network.
+
+    :param model: a neural network used for evaluation
+    :param classes: class names
+    :param input_path: path to the data, which were obtained by video2img function (of video_capture.py script)
+    :param output_path: output directory, where files and folders shall be stored
+    :param portable: optional, if this argument is True, input images are stored in output directory
+    :param grad_cam: optional, if this argument is True, Grad-CAM is generated (for time-distributed models this is not
+                     allowed)
+    :param verbose: optional, display extended information
+
+    :return: None
+    """
+
     if verbose:
         print('[I] Creating the HTML file with predictions.')
 
@@ -499,6 +562,16 @@ def create_html(model, classes, input_path, output_path, portable=True, grad_cam
 
 
 def get_confusion_matrix(model, data, verbose=True):
+    """
+    This function returns a Confusion matrix and vector with wrong predictions for given data and model.
+
+    :param model: a neural network
+    :param data: a data (training, validation, or testing) used for generating an output
+    :param verbose: optional, display extended information
+
+    :return: a Confusion matrix and vector with wrong predictions
+    """
+
     if verbose:
         print('[I] Generating the Confusion matrix.')
 
@@ -534,6 +607,19 @@ def get_confusion_matrix(model, data, verbose=True):
 
 
 def create_tex_validation(matrix, class_names, output_path, normalize=True, label=None, verbose=True):
+    """
+    Generate a Confusion matrix for a LaTeX document.
+
+    :param matrix: a Confusion matrix obtained from get_confusion_matrix function
+    :param class_names: a list of class names
+    :param output_path: an output directory, where a file shall be generated
+    :param normalize: optional, if this argument is True, a Confusion matrix will be normalized
+    :param label: optional, a label name for generated LaTeX table
+    :param verbose: optional, display extended information
+
+    :return: None
+    """
+
     if verbose:
         print('[I] Creating the Confusion table for LaTeX.')
 
@@ -654,6 +740,24 @@ def get_html_validation(matrix, class_names, normalize=True, spaces='', acc_loss
 
 def create_html_validation(model, classes, data, output_path, matrix_and_wrong_pred=None, grad_cam=False, gif_ms=100,
                            acc_loss=None, verbose=True):
+    """
+    Generation of evaluation file for a neural network.
+
+    :param model: a neural network used for evaluation
+    :param classes: class names
+    :param data: a data used for evaluation (training, validation, or testing data)
+    :param output_path: output directory, where files and folders shall be stored
+    :param matrix_and_wrong_pred: optional, a Confusion matrix and wrong predictions (output of get_confusion_matrix
+                                  function)
+    :param grad_cam: optional, if this argument is True, Grad-CAM is generated (for time-distributed models this is not
+                     allowed)
+    :param gif_ms: optional, framerate for gif images (used only for time-distributed models)
+    :param acc_loss: optional, figures representing accuracy and loss functions from the learning progress
+    :param verbose: optional, display extended information
+
+    :return: None
+    """
+
     if verbose:
         print('[I] Creating the HTML validation file.')
 
@@ -742,7 +846,7 @@ def create_html_validation(model, classes, data, output_path, matrix_and_wrong_p
                     img = data[0][pos, i, ...]
                     img_name = f'%03.d.jpg' % i
                     path_to_img = os.path.join('imgs', img_dir, img_name)
-                    cv2.imwrite(os.path.join(output_path, path_to_img), np.multiply(img, 255))
+                    cv2.imwrite(os.path.join(output_path, path_to_img), np.multiply(np.float32(img), 255))
 
                     input_imgs['path'].append(path_to_img)
                     input_imgs['len'] += 1
@@ -750,7 +854,7 @@ def create_html_validation(model, classes, data, output_path, matrix_and_wrong_p
                 img = data[0][pos, ...]
                 img_name = f'%06.d.jpg' % num_processed
                 path_to_img = os.path.join('imgs', img_name)
-                cv2.imwrite(os.path.join(output_path, path_to_img), np.multiply(img, 255))
+                cv2.imwrite(os.path.join(output_path, path_to_img), np.multiply(np.float32(img), 255))
 
                 input_imgs['path'].append(path_to_img)
                 input_imgs['len'] += 1
@@ -785,6 +889,89 @@ def create_html_validation(model, classes, data, output_path, matrix_and_wrong_p
             template('evaluation.predict', html_file, predict_file=predict_file, output_vector=prediction,
                      true_label=data[1][pos], gif=gifname, classes=classes, view=('./' + input_imgs['path'][0]),
                      grad_cam=grad_cam, heat_file=heat_file)
+
+    if verbose:
+        print('[I] The HTML validation file was successfully created.')
+
+
+def create_html_cam_comparison(models, classes, data, output_path, verbose=True):
+    if len(models) in [0, 1]:
+        raise Exception('[E] The parameter "models" must contain at least 2 models for comparison!')
+
+    if verbose:
+        print('[I] Creating the GradCAM comparison file.')
+
+    # Get input shape of model
+    input_shape = models[0].get_input_shape_at(0)
+
+    # Get number of input frames
+    if len(input_shape) == 5:
+        # Model type is LSTM
+        raise Exception('[E] This function is relevant only for non-sequential models.')
+    # endif  len(input_shape) == 5 // Get number of input frames
+
+    # The images will be copied to the HTML file
+    if not os.path.exists(os.path.join(output_path, 'imgs')):
+        os.mkdir(os.path.join(output_path, 'imgs'))
+
+    # The output of Grad CAM
+    if not os.path.exists(os.path.join(output_path, 'focuses')):
+        os.mkdir(os.path.join(output_path, 'focuses'))
+
+    # Copy template and rename it
+    shutil.copy(os.path.join(os.path.dirname(__file__), '..', EVALTEMP), os.path.join(output_path, 'evaluation.html'))
+
+    # Get predictions for all models
+    predictions = []
+    for model in models:
+        predictions.append(model.predict(data[0]))
+
+    # Write the validation evaluation to the html file
+    with open(os.path.join(output_path, 'evaluation.html'), 'r+') as html_file:
+        # Load the template and save it to the html file
+        template('evaluation.prepare_to_compare', html_file, classes=classes, models=models, comparison=True)
+
+        num_total_imgs = len(data[1])  # The total number of images
+
+        # Compare the models
+        t_last = time.time()
+        for i, desired_output_vector in enumerate(data[1]):
+
+            if verbose and (time.time() - t_last) > PRINT_STATUS:
+                # how many images was done
+                print(f'[%3d %%] done' % (i * 100 / num_total_imgs))
+                t_last = time.time()
+
+            true_class = np.argmax(desired_output_vector)  # index of True label
+
+            # Check the correct prediction
+            skip = False
+            for m in range(0, len(models)):
+                if true_class == np.argmax(predictions[m][i]):
+                    skip = True
+                    break
+
+            # Skip this cycle when any model failed
+            if skip is True:
+                continue
+
+            # Store the image
+            img = data[0][i, ...]
+            img_name = f'%06.d.jpg' % i
+            path_to_img = os.path.join('imgs', img_name)
+            cv2.imwrite(os.path.join(output_path, path_to_img), np.multiply(img, 255))
+
+            # What the Neural Network see - it is not supported for LSTM network
+            heat_files = []
+            for m, model in enumerate(models):
+                heat_map = visualize_cam(model, -1, true_class, img)
+                heat_map_name = f'%06.d-%s.jpg' % (i, model.name)
+                heat_file = os.path.join('focuses', heat_map_name)
+                cv2.imwrite(os.path.join(output_path, heat_file), heat_map)
+                heat_files.append('./' + heat_file)
+
+            template('evaluation.compare', html_file, models=models, true_class=true_class, classes=classes, predicted_class=[np.argmax(predictions[0][i]), np.argmax(predictions[1][i]), np.argmax(predictions[2][i])], # TODO!!!
+                     view=('./' + path_to_img), heat_files=heat_files)
 
     if verbose:
         print('[I] The HTML validation file was successfully created.')
