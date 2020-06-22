@@ -228,10 +228,8 @@ if __name__ == '__main__':
 
                     matrix, wrong_pred_vector = eg.get_confusion_matrix(model, (x_valid, y_valid))
 
-                    eg.create_tex_validation(matrix, CLASS_NAMES, os.path.join(args.output, evaluation_dir['valid']),
-                                             label=label, verbose=args.verbose)
-                    eg.create_html_validation(model, CLASS_NAMES, (x_valid, y_valid),
-                                              os.path.join(args.output, evaluation_dir['valid']), grad_cam=args.gradCAM,
+                    eg.create_tex_validation(matrix, CLASS_NAMES, path, label=label, verbose=args.verbose)
+                    eg.create_html_validation(model, CLASS_NAMES, (x_valid, y_valid), path, grad_cam=args.gradCAM,
                                               matrix_and_wrong_pred=(matrix, wrong_pred_vector), verbose=args.verbose)
 
                 # test argument
@@ -253,10 +251,8 @@ if __name__ == '__main__':
 
                     matrix, wrong_pred_vector = eg.get_confusion_matrix(model, (x_test, y_test))
 
-                    eg.create_tex_validation(matrix, CLASS_NAMES, os.path.join(args.output, evaluation_dir['test']),
-                                             label=label, verbose=args.verbose)
-                    eg.create_html_validation(model, CLASS_NAMES, (x_test, y_test),
-                                              os.path.join(args.output, evaluation_dir['test']), grad_cam=args.gradCAM,
+                    eg.create_tex_validation(matrix, CLASS_NAMES, path, label=label, verbose=args.verbose)
+                    eg.create_html_validation(model, CLASS_NAMES, (x_test, y_test), path, grad_cam=args.gradCAM,
                                               matrix_and_wrong_pred=(matrix, wrong_pred_vector), verbose=args.verbose)
 
         # predict argument

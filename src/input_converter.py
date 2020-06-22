@@ -284,7 +284,6 @@ def get_img_paths(data, balance=None, lstm=False):
 
 
 def shuffle_lists(list1, list2):
-
     # Packing pairs - (input, output)
     combined = list(zip(list1, list2))
 
@@ -298,7 +297,6 @@ def shuffle_lists(list1, list2):
 
 
 def add_imgs(data, output, shape, normalize=True, verbose=True, lstm=False):
-
     num_data = len(data)
     t_last = time.time()
 
